@@ -1,0 +1,42 @@
+<!--#set var="TITLE" value="Gait Maturation Database and Analysis"-->
+<!--#include virtual="/head.shtml"-->
+
+
+<p>
+<img src="new-gait-ts.png" alt="[Plots of stride dynamics]" align=right>
+In very young children, immature control of posture and gait result in
+an unsteady gait.  By about three years of age, gait appears
+relatively mature.  However, it is unknown whether the dynamics of
+walking change beyond this age.  Because stride dynamics depend on
+neural control, we hypothesized that gait dynamics would continue to
+develop beyond age three.  To test this hypothesis, we measured the
+gait cycle duration on a stride-by-stride basis in healthy children
+(n=50) ages 3&nbsp;to 14&nbsp;years old, using a portable foot-switch
+device inserted inside of shoes.
+The figure on the right shows representative walking time series of 4, 7,
+and 11-year-old children.  
+
+<p><hr>
+<ul>
+<li>
+You are invited to download the complete database (available as a 
+<a href="gait-maturation-db.tar.gz">gzip-compressed UNIX tar archive</a>
+<nobr>(<!--#fsize file="gait-maturation-db.tar.gz" -->),</nobr>
+or as <a href="data/">individual files</a>) and perform your own analyses.
+(WinZip users, please read this important
+<a href="/faq.shtml#tar-gz">note</a>.)
+<li>
+A <a href="http://jap.physiology.org" target="other">Journal of
+Applied Physiology</a> article describing an initial analysis of these
+data can be viewed in <a href="jap/gait-reprint.html">HTML format</a>,
+<a href="jap/gait-reprint.ps">PostScript format</a>, and <a
+href="jap/gait-reprint.pdf">PDF format.</a>
+<li>
+For more information, please contact <a
+href="mailto:jhausdor@caregroup.harvard.edu">JM Hausdorff
+(<tt>jhausdorff@caregroup.harvard.edu</tt>)</a>.
+</ul>
+
+<!--#include virtual="/footer.shtml"-->
+</body>
+</html>
