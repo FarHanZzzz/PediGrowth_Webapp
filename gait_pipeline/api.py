@@ -38,6 +38,7 @@ class TrialResponse(BaseModel):
     confidence_score: float
     is_valid: bool
     discard_reasons: List[str]
+    rejection_reasons: List[str]
     scalar_metrics: Dict[str, float]
     feature_tags: Dict[str, str]
     risk_category: str
@@ -81,6 +82,7 @@ MAX_AGE_MONTHS = 216
 
 def _run_preflight(req: PreflightRequest) -> PreflightResponse:
     error_codes: List[str] = []
+    condition_norm = req.condition.upper() if isinstance(req.condition, str) else None
 
     if req.content_type.lower() not in ALLOWED_MIME_TYPES:
         error_codes.append("unsupported_file_type")
@@ -91,13 +93,13 @@ def _run_preflight(req: PreflightRequest) -> PreflightResponse:
     if not (MIN_AGE_MONTHS <= req.age_months <= MAX_AGE_MONTHS):
         error_codes.append("invalid_age")
 
-    if req.condition is not None and req.condition not in {"CP", "TD"}:
+    if condition_norm is not None and condition_norm not in {"CP", "TD"}:
         error_codes.append("invalid_condition")
 
     if req.severity is not None and not (0 <= req.severity <= 3):
         error_codes.append("invalid_severity")
 
-    if req.condition == "TD" and req.severity not in {None, 0}:
+    if condition_norm == "TD" and req.severity not in {None, 0}:
         if "invalid_severity" not in error_codes:
             error_codes.append("invalid_severity")
 
@@ -127,12 +129,29 @@ def _with_metric_aliases(metrics: Dict[str, float]) -> Dict[str, float]:
     return aliased
 
 
-def _risk_and_explanation(quality_score: float, scalar_metrics: Dict[str, float]) -> tuple[str, str]:
+def _derive_rejection_reasons(all_reasons: List[str]) -> List[str]:
+    cycle_prefixes = (
+        "gait_cycle_validation_failed",
+        "no_detectable_gait_cycle",
+        "insufficient_gait_cycles",
+        "cycle_",
+    )
+    cycle_reasons = [
+        reason for reason in all_reasons if any(reason.startswith(prefix) for prefix in cycle_prefixes)
+    ]
+    return cycle_reasons if cycle_reasons else all_reasons
+
+
+def _risk_and_explanation(
+    quality_score: float,
+    scalar_metrics: Dict[str, float],
+    quality_threshold: float,
+) -> tuple[str, str]:
     knee_rom = float(scalar_metrics.get("knee_rom_deg", np.nan))
     asym = float(scalar_metrics.get("temporal_asymmetry_index", np.nan))
 
     risk_points = 0
-    if np.isfinite(quality_score) and quality_score < 0.75:
+    if np.isfinite(quality_score) and quality_score < quality_threshold:
         risk_points += 1
     if np.isfinite(knee_rom) and knee_rom < 45.0:
         risk_points += 1
@@ -150,6 +169,7 @@ def _risk_and_explanation(quality_score: float, scalar_metrics: Dict[str, float]
         "Deterministic screening summary: "
         f"quality_score={quality_score:.2f}, knee_rom_deg={knee_rom:.1f}, "
         f"temporal_asymmetry_index={asym:.2f}. "
+        f"Quality risk threshold={quality_threshold:.2f}. "
         "Reduced knee extension range and/or elevated temporal asymmetry increase screening risk."
     )
     return risk, explanation
@@ -216,6 +236,7 @@ def build_app(
         all_reasons = list(clean.discard_reasons) + warnings
 
         if not clean.is_valid:
+            rejection_reasons = _derive_rejection_reasons(all_reasons)
             runtime.log_failure(
                 {
                     "trial_id": trial_id,
@@ -235,6 +256,7 @@ def build_app(
                 confidence_score=float(clean.quality_components.get("confidence", np.nan)),
                 is_valid=False,
                 discard_reasons=all_reasons,
+                rejection_reasons=rejection_reasons,
                 scalar_metrics={},
                 feature_tags={},
                 risk_category="invalid",
@@ -254,6 +276,7 @@ def build_app(
         risk_category, explanation = _risk_and_explanation(
             quality_score=clean.quality_score,
             scalar_metrics=scalar_metrics,
+            quality_threshold=runtime.config.quality_threshold,
         )
 
         return TrialResponse(
@@ -266,6 +289,7 @@ def build_app(
             confidence_score=float(clean.quality_components.get("confidence", np.nan)),
             is_valid=True,
             discard_reasons=all_reasons,
+            rejection_reasons=[],
             scalar_metrics=scalar_metrics,
             feature_tags=features.feature_tags,
             risk_category=risk_category,

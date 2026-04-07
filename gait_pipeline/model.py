@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import importlib
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -23,6 +23,53 @@ BASELINE_FEATURE_COLUMNS = [
     "lr_knee_rmsd",
     "temporal_asymmetry_index",
 ]
+
+OPTIONAL_EXPERIMENTAL_FEATURE_COLUMNS = [
+    "jerk_metric",
+]
+
+FEATURE_ALIASES = {
+    "step_length": "step_length_mean",
+    "stride_length": "stride_length_mean",
+    "stride_time": "stride_time_mean",
+    "cadence": "cadence_spm",
+    "step_width": "step_width_mean",
+    "gait_speed": "gait_speed_mps",
+    "hip_rom": "hip_rom_deg",
+    "knee_rom": "knee_rom_deg",
+    "ankle_rom": "ankle_rom_deg",
+    "ankle_dorsiflexion_peak": "ankle_rom_deg",
+    "symmetry_index": "temporal_asymmetry_index",
+}
+
+
+def resolve_feature_columns(requested_scalar_metrics: Optional[List[str]]) -> List[str]:
+    supported = set(BASELINE_FEATURE_COLUMNS + OPTIONAL_EXPERIMENTAL_FEATURE_COLUMNS)
+
+    if not requested_scalar_metrics:
+        return list(BASELINE_FEATURE_COLUMNS)
+
+    resolved: List[str] = []
+    unknown: List[str] = []
+    for metric in requested_scalar_metrics:
+        metric_norm = str(metric).strip()
+        if not metric_norm:
+            continue
+        canonical = FEATURE_ALIASES.get(metric_norm, metric_norm)
+        if canonical not in supported:
+            unknown.append(metric_norm)
+            continue
+        if canonical not in resolved:
+            resolved.append(canonical)
+
+    if unknown:
+        unknown_joined = ", ".join(sorted(set(unknown)))
+        raise ValueError(f"unsupported_scalar_metric: {unknown_joined}")
+
+    if not resolved:
+        raise ValueError("no_supported_scalar_metrics_selected")
+
+    return resolved
 
 
 @dataclass
@@ -57,14 +104,21 @@ def train_baseline_random_forest(
     use_smote: bool = False,
     class_weight: str | dict[str, float] | None = "balanced",
     random_state: int = 42,
+    feature_columns: Optional[List[str]] = None,
 ) -> TrainArtifacts:
+    selected_columns = feature_columns or list(BASELINE_FEATURE_COLUMNS)
+
     train_df = split_df[split_df["split"] == "train"].reset_index(drop=True)
     val_df = split_df[split_df["split"] == "val"].reset_index(drop=True)
     test_df = split_df[split_df["split"] == "test"].reset_index(drop=True)
 
-    x_train = _prepare_matrix(train_df, BASELINE_FEATURE_COLUMNS)
-    x_val = _prepare_matrix(val_df, BASELINE_FEATURE_COLUMNS)
-    x_test = _prepare_matrix(test_df, BASELINE_FEATURE_COLUMNS)
+    missing = [c for c in selected_columns if c not in split_df.columns]
+    if missing:
+        raise ValueError(f"missing_feature_columns: {', '.join(missing)}")
+
+    x_train = _prepare_matrix(train_df, selected_columns)
+    x_val = _prepare_matrix(val_df, selected_columns)
+    x_test = _prepare_matrix(test_df, selected_columns)
 
     y_train = build_labels(train_df, task=task).to_numpy()
     y_val = build_labels(val_df, task=task).to_numpy()
@@ -97,7 +151,7 @@ def train_baseline_random_forest(
 
     importance = pd.DataFrame(
         {
-            "feature": BASELINE_FEATURE_COLUMNS,
+            "feature": selected_columns,
             "importance": clf.feature_importances_,
         }
     ).sort_values("importance", ascending=False)

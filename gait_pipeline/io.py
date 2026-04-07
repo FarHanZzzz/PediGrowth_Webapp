@@ -74,6 +74,20 @@ MEDIAPIPE33_TO_COCO17 = {
     28: 16,
 }
 
+REQUIRED_MANIFEST_COLUMNS = [
+    "trial_path",
+    "trial_format",
+    "source_joint_set",
+    "subject_id",
+    "age_months",
+    "condition",
+    "severity",
+    "sampling_rate",
+]
+
+MIN_AGE_MONTHS = 36.0
+MAX_AGE_MONTHS = 216.0
+
 
 def _infer_source_joint_set(joint_count: int, declared: Optional[str]) -> str:
     if declared:
@@ -293,7 +307,7 @@ def load_trial_data(
     else:
         raise ValueError(f"Unsupported trial format: {inferred_format}")
 
-    if target_joint_set.lower() == "coco17":
+    if target_joint_set.lower() == "coco17" and coords.shape[1] != len(COCO17_JOINTS):
         coords, conf, names = map_keypoints_to_coco17(coords, conf, source_joint_set=source_joint_set)
 
     return coords, conf, names
@@ -311,6 +325,7 @@ def _resolve_video_sidecar(video_path: Path) -> Tuple[Path, str]:
         video_path.parent / f"{video_path.stem}_keypoints.npy",
         video_path.parent / f"{video_path.stem}_keypoints.csv",
         video_path.parent / f"{video_path.stem}_keypoints",
+        video_path.parent / "keypoints",
     ]
 
     for candidate in candidates:
@@ -374,11 +389,18 @@ def _primary_condition(raw_condition: str) -> Tuple[str, bool]:
     return raw_condition, False
 
 
+def _validate_manifest_columns(manifest_df: pd.DataFrame) -> None:
+    for column in REQUIRED_MANIFEST_COLUMNS:
+        if column not in manifest_df.columns:
+            raise ValueError(f"manifest_missing_column: {column}")
+
+
 def build_unified_dataset(
     manifest_df: pd.DataFrame,
     target_joint_set: str = "coco17",
     failure_records: Optional[List[Dict[str, Any]]] = None,
 ) -> pd.DataFrame:
+    _validate_manifest_columns(manifest_df)
     records: List[Dict[str, Any]] = []
 
     for idx, row in manifest_df.iterrows():
@@ -386,13 +408,43 @@ def build_unified_dataset(
         if not trial_path:
             raise ValueError(f"Manifest row {idx} missing trial_path")
 
+        trial_id = str(row.get("trial_id") or Path(str(trial_path)).stem)
+        subject_id = str(row.get("subject_id", trial_id.split("_")[0]))
+        age_months = _safe_float(row.get("age_months"), np.nan)
+
+        if not np.isfinite(age_months) or not (MIN_AGE_MONTHS <= age_months <= MAX_AGE_MONTHS):
+            if failure_records is not None:
+                failure_records.append(
+                    {
+                        "trial_id": trial_id,
+                        "subject_id": subject_id,
+                        "quality_score": 0.0,
+                        "reasons": f"age_out_of_range:{age_months}",
+                        "source_path": str(trial_path),
+                    }
+                )
+            continue
+
         raw_condition = str(row.get("condition", "TD"))
         primary_condition, had_multiple_conditions = _primary_condition(raw_condition)
 
-        condition, severity = enforce_condition_and_severity(
-            primary_condition,
-            _safe_int(row.get("severity"), 0),
-        )
+        try:
+            condition, severity = enforce_condition_and_severity(
+                primary_condition,
+                _safe_int(row.get("severity"), 0),
+            )
+        except Exception as exc:
+            if failure_records is not None:
+                failure_records.append(
+                    {
+                        "trial_id": trial_id,
+                        "subject_id": subject_id,
+                        "quality_score": 0.0,
+                        "reasons": f"invalid_label:{exc}",
+                        "source_path": str(trial_path),
+                    }
+                )
+            continue
 
         try:
             coords, conf, _joint_names = load_trial_data(
@@ -405,17 +457,16 @@ def build_unified_dataset(
             if failure_records is not None:
                 failure_records.append(
                     {
-                        "trial_id": str(row.get("trial_id") or Path(str(trial_path)).stem),
-                        "subject_id": str(row.get("subject_id", "unknown")),
+                        "trial_id": trial_id,
+                        "subject_id": subject_id,
                         "quality_score": 0.0,
-                        "reasons": f"corrupt_file:{exc}",
+                        "reasons": f"file_read_error:{exc}",
                         "source_path": str(trial_path),
                     }
                 )
             continue
 
         is_3d = coords.shape[2] == 3
-        trial_id = str(row.get("trial_id") or Path(str(trial_path)).stem)
         metadata = _build_metadata(row)
         if had_multiple_conditions:
             metadata["multi_condition_flag"] = True
@@ -423,8 +474,8 @@ def build_unified_dataset(
 
         unified = UnifiedTrial(
             trial_id=trial_id,
-            subject_id=str(row.get("subject_id", trial_id.split("_")[0])),
-            age_months=_safe_float(row.get("age_months"), np.nan),
+            subject_id=subject_id,
+            age_months=age_months,
             condition=condition,
             severity=severity,
             sampling_rate=_safe_int(row.get("sampling_rate"), 30),

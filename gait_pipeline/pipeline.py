@@ -13,7 +13,7 @@ from .cleaning import clean_and_normalize_trial, fill_missing_metadata_with_popu
 from .config import PipelineConfig, load_config
 from .features import extract_core_features
 from .io import build_unified_dataset
-from .model import BASELINE_FEATURE_COLUMNS, train_baseline_random_forest
+from .model import resolve_feature_columns, train_baseline_random_forest
 from .split import split_by_subject, summarize_split_balance
 
 
@@ -163,9 +163,9 @@ def _bimodal_flag(x: np.ndarray) -> bool:
     return peaks >= 2
 
 
-def _feature_distribution_checks(features_df: pd.DataFrame, output_dir: Path) -> Path:
+def _feature_distribution_checks(features_df: pd.DataFrame, output_dir: Path, feature_columns: List[str]) -> Path:
     rows = []
-    for col in BASELINE_FEATURE_COLUMNS:
+    for col in feature_columns:
         values = pd.to_numeric(features_df[col], errors="coerce").dropna().to_numpy()
         rows.append(
             {
@@ -181,7 +181,7 @@ def _feature_distribution_checks(features_df: pd.DataFrame, output_dir: Path) ->
     return out_path
 
 
-def _icc_oneway_repeat(features_df: pd.DataFrame, output_dir: Path) -> Optional[Path]:
+def _icc_oneway_repeat(features_df: pd.DataFrame, output_dir: Path, feature_columns: List[str]) -> Optional[Path]:
     counts = features_df.groupby("subject_id").size()
     repeated_subjects = counts[counts >= 2].index
     if len(repeated_subjects) < 2:
@@ -193,7 +193,7 @@ def _icc_oneway_repeat(features_df: pd.DataFrame, output_dir: Path) -> Optional[
         return None
 
     rows = []
-    for feature in BASELINE_FEATURE_COLUMNS:
+    for feature in feature_columns:
         matrix = []
         for sid, group in subset.groupby("subject_id"):
             values = pd.to_numeric(group[feature], errors="coerce").dropna().to_numpy()
@@ -253,6 +253,7 @@ def run_end_to_end_pipeline(
     config: PipelineConfig = load_config(config_path)
     if config.model_type.lower() not in {"random_forest", "rf"}:
         raise ValueError("Only random_forest baseline is supported in the current deterministic pipeline")
+    model_feature_columns = resolve_feature_columns(config.requested_scalar_metrics)
 
     manifest_path = Path(manifest_path)
     if manifest_path.suffix.lower() == ".parquet":
@@ -390,8 +391,8 @@ def run_end_to_end_pipeline(
     balance_path = output / "split_balance.csv"
     balance_df.to_csv(balance_path, index=False)
 
-    distribution_path = _feature_distribution_checks(features_df, output)
-    icc_path = _icc_oneway_repeat(features_df, output)
+    distribution_path = _feature_distribution_checks(features_df, output, model_feature_columns)
+    icc_path = _icc_oneway_repeat(features_df, output, model_feature_columns)
     data_integrity_path = _data_integrity_report(features_df, output)
 
     train_artifacts = train_baseline_random_forest(
@@ -400,6 +401,7 @@ def run_end_to_end_pipeline(
         use_smote=config.use_smote,
         class_weight=config.model_class_weight,
         random_state=config.random_state,
+        feature_columns=model_feature_columns,
     )
 
     model_path = output / "baseline_random_forest.joblib"
@@ -441,4 +443,5 @@ def run_end_to_end_pipeline(
         "shape_checks": str(shape_path),
         "single_cycle_plot": str(single_cycle_plot) if single_cycle_plot else None,
         "cp_vs_td_plot": str(cohort_plot) if cohort_plot else None,
+        "model_feature_columns": model_feature_columns,
     }

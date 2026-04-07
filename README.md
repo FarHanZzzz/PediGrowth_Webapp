@@ -63,6 +63,23 @@ python scripts/verify_pipeline_synthetic.py
 
 This creates a synthetic dataset, runs the complete pipeline, prints shape checks, and writes a normalized gait cycle plot.
 
+### Strict Readiness Audit
+
+Run a hard go/no-go audit over the latest pipeline outputs:
+
+```bash
+PYTHONPATH=. python scripts/validate_quality_gates.py \
+  --features outputs/hsil_demo/scalar_features.parquet \
+  --manifest data/manifest.csv \
+  --output outputs/hsil_demo/quality_gates_report.json
+```
+
+Notes:
+
+- The script exits with code `0` only when all readiness gates pass.
+- It exits with non-zero when any critical gate fails (sample counts, synthetic ratio, split leakage, model signal, etc.).
+- Detailed failed checks and recommendations are written to `quality_gates_report.json`.
+
 ### Serve FastAPI Endpoint
 
 ```bash
@@ -82,3 +99,47 @@ The trial endpoint returns deterministic scalar gait metrics and a confidence sc
 - `risk_category`
 - `explanation` (deterministic template)
 - `disclaimer` (screening-only warning)
+
+### Hackathon Demo Runbook
+
+Use this sequence for a transparent, robust demo:
+
+```bash
+# 1) Generate synthetic demo trials and artifacts
+python scripts/verify_pipeline_synthetic.py
+
+# 2) Show API preflight rejection + analysis in one command
+PYTHONPATH=. python scripts/demo_api_smoke.py \
+  --trial-path outputs/synthetic_demo/trials/S001_T1.csv \
+  --trial-format csv \
+  --source-joint-set coco17 \
+  --output outputs/hsil_demo/demo_api_smoke.json
+
+# 3) Show discard transparency when real trials fail quality gates
+cat outputs/hsil_demo_real/discarded_trials.csv
+```
+
+Judge-facing disclaimer to display in UI/slides:
+
+- `This is a screening support tool, not a diagnostic device.`
+
+### Debug Trial Quality Failures
+
+When a trial is discarded, run a single-trial quality debug report:
+
+```bash
+PYTHONPATH=. python scripts/debug_quality_thresholds.py \
+  --trial-path dataset/mobile-gaitlab/demo/out/video.mp4 \
+  --trial-format video \
+  --source-joint-set coco17 \
+  --sampling-rate 30 \
+  --thresholds 0.50,0.60,0.70,0.80 \
+  --output outputs/hsil_demo_real/quality_debug_video.json
+```
+
+The report includes:
+
+- Pre-clean confidence and gap stats
+- Quality components and threshold sensitivity
+- Dominant failure stage and explicit discard reasons
+- Scalar metrics and tags when the trial is valid

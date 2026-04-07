@@ -42,6 +42,43 @@ class PipelineConfig:
     )
 
 
+def _validate_config(cfg: PipelineConfig) -> None:
+    if not (0.0 <= cfg.confidence_threshold <= 1.0):
+        raise ValueError("invalid_config: confidence_threshold must be in [0, 1]")
+
+    if not (0.0 <= cfg.quality_threshold <= 1.0):
+        raise ValueError("invalid_config: quality_threshold must be in [0, 1]")
+
+    if cfg.savgol_window < 3 or cfg.savgol_window % 2 == 0:
+        raise ValueError("invalid_config: savgol_window must be an odd integer >= 3")
+
+    if cfg.savgol_polyorder < 1 or cfg.savgol_polyorder >= cfg.savgol_window:
+        raise ValueError("invalid_config: savgol_polyorder must be >= 1 and < savgol_window")
+
+    if cfg.short_gap_max_frames < 1:
+        raise ValueError("invalid_config: short_gap_max_frames must be >= 1")
+
+    if cfg.long_gap_min_frames <= cfg.short_gap_max_frames:
+        raise ValueError("invalid_config: long_gap_min_frames must be greater than short_gap_max_frames")
+
+    if cfg.normalized_cycle_points < 20:
+        raise ValueError("invalid_config: normalized_cycle_points must be >= 20")
+
+    if cfg.heel_strike_min_distance_seconds <= 0:
+        raise ValueError("invalid_config: heel_strike_min_distance_seconds must be > 0")
+
+    split_values = [cfg.split_train, cfg.split_val, cfg.split_test]
+    if any(v <= 0 for v in split_values):
+        raise ValueError("invalid_config: split_train, split_val, and split_test must all be > 0")
+
+    total = cfg.split_train + cfg.split_val + cfg.split_test
+    if abs(total - 1.0) > 1e-6:
+        raise ValueError("invalid_config: split_train + split_val + split_test must equal 1.0")
+
+    if not cfg.split_stratify_keys:
+        raise ValueError("invalid_config: split_stratify_keys cannot be empty")
+
+
 def _merged_config_dict(raw: Dict[str, Any]) -> Dict[str, Any]:
     if not raw:
         return {}
@@ -120,10 +157,14 @@ def _merged_config_dict(raw: Dict[str, Any]) -> Dict[str, Any]:
 
 def load_config(path: Optional[str | Path] = None) -> PipelineConfig:
     if path is None:
-        return PipelineConfig()
+        cfg = PipelineConfig()
+        _validate_config(cfg)
+        return cfg
 
     with Path(path).open("r", encoding="utf-8") as handle:
         raw: Dict[str, Any] = yaml.safe_load(handle) or {}
 
     merged = _merged_config_dict(raw)
-    return PipelineConfig(**merged)
+    cfg = PipelineConfig(**merged)
+    _validate_config(cfg)
+    return cfg

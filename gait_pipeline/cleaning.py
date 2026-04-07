@@ -22,6 +22,13 @@ COCO17_INDEX = {
     "right_shoulder": 6,
 }
 
+DEFAULT_PHYSIOLOGIC_BOUNDS = {
+    "hip_flexion": (-30.0, 140.0),
+    "knee_flexion": (-10.0, 150.0),
+    "ankle_dorsiflexion": (-40.0, 50.0),
+    "pelvis_tilt": (-30.0, 30.0),
+}
+
 
 @dataclass
 class CleanTrialResult:
@@ -186,20 +193,91 @@ def compute_joint_angles_deg(coords: np.ndarray) -> Dict[str, np.ndarray]:
 def clip_to_physiological_bounds(
     angles_deg: Dict[str, np.ndarray],
     bounds: Dict[str, Tuple[float, float]],
-) -> Dict[str, np.ndarray]:
+) -> Tuple[Dict[str, np.ndarray], float]:
     clipped: Dict[str, np.ndarray] = {}
+    finite_total = 0
+    clipped_total = 0
+
+    def _clip_and_count(values: np.ndarray, lo: float, hi: float) -> np.ndarray:
+        nonlocal finite_total, clipped_total
+        vals = np.asarray(values, dtype=float)
+        finite_mask = np.isfinite(vals)
+        finite_total += int(np.sum(finite_mask))
+        clipped_vals = np.clip(vals, lo, hi)
+        clipped_total += int(np.sum(finite_mask & (np.abs(clipped_vals - vals) > 1e-12)))
+        return clipped_vals
+
     for key, values in angles_deg.items():
+        count_for_ratio = True
         if "knee" in key:
             lo, hi = bounds["knee_flexion_deg"]
         elif "hip" in key:
             lo, hi = bounds["hip_flexion_deg"]
         elif "ankle" in key:
             lo, hi = bounds["ankle_dorsi_deg"]
+            # Ankle is represented as a leg-orientation proxy, so it is clipped for stability
+            # but excluded from bound-violation ratio scoring to avoid over-penalization.
+            count_for_ratio = False
         else:
             clipped[key] = values
             continue
-        clipped[key] = np.clip(values, lo, hi)
-    return clipped
+        if count_for_ratio:
+            clipped[key] = _clip_and_count(values, lo, hi)
+        else:
+            clipped[key] = np.clip(values, lo, hi)
+
+    violation_ratio = (clipped_total / finite_total) if finite_total > 0 else 0.0
+    return clipped, float(violation_ratio)
+
+
+def _resolve_bound_key(joint_name: str) -> Optional[str]:
+    lower = str(joint_name).strip().lower()
+    if "hip" in lower:
+        return "hip_flexion"
+    if "knee" in lower:
+        return "knee_flexion"
+    if "ankle" in lower:
+        return "ankle_dorsiflexion"
+    if "pelvis" in lower:
+        return "pelvis_tilt"
+    return None
+
+
+def enforce_physiologic_bounds(
+    coords: np.ndarray,
+    joint_names: Sequence[str],
+    bounds: Optional[Dict[str, Tuple[float, float]]] = None,
+    return_stats: bool = False,
+) -> np.ndarray | Tuple[np.ndarray, float]:
+    """Clip per-joint trajectories to named physiologic ranges."""
+    out = np.asarray(coords, dtype=float).copy()
+    if out.ndim not in (2, 3):
+        raise ValueError(f"Expected [T, J] or [T, J, D], got {out.shape}")
+
+    active_bounds = dict(DEFAULT_PHYSIOLOGIC_BOUNDS)
+    if bounds:
+        active_bounds.update({str(k): tuple(v) for k, v in bounds.items()})
+
+    finite_total = 0
+    clipped_total = 0
+
+    for joint_idx, joint_name in enumerate(joint_names):
+        key = _resolve_bound_key(joint_name)
+        if key is None or key not in active_bounds or joint_idx >= out.shape[1]:
+            continue
+
+        lo, hi = active_bounds[key]
+        values = out[:, joint_idx, ...] if out.ndim == 3 else out[:, joint_idx]
+        finite_mask = np.isfinite(values)
+        finite_total += int(np.sum(finite_mask))
+        clipped = np.clip(values, lo, hi)
+        clipped_total += int(np.sum(finite_mask & (np.abs(clipped - values) > 1e-12)))
+        out[:, joint_idx, ...] = clipped
+
+    ratio = (clipped_total / finite_total) if finite_total > 0 else 0.0
+    if return_stats:
+        return out, float(ratio)
+    return out
 
 
 def remove_angle_spikes(angles_deg: Dict[str, np.ndarray], mad_threshold: float) -> Dict[str, np.ndarray]:
@@ -337,6 +415,70 @@ def normalize_cycles(
     return GaitCycleResult(cycles=stacked, mean_cycle=np.mean(stacked, axis=0), heel_strikes=heel_strikes)
 
 
+def _mean_pelvis_x(cycle: np.ndarray) -> np.ndarray:
+    lhip = _get_joint(cycle, "left_hip")
+    rhip = _get_joint(cycle, "right_hip")
+    if lhip is not None and rhip is not None:
+        return (lhip[:, 0] + rhip[:, 0]) / 2.0
+    return np.nanmean(cycle[:, :, 0], axis=1)
+
+
+def validate_gait_cycles(
+    cycles: np.ndarray,
+    heel_strikes: np.ndarray,
+    sampling_rate: int,
+    metadata: Dict[str, Any],
+) -> Tuple[bool, List[str]]:
+    """Check cycle-level plausibility for stride timing, step length, and knee ROM."""
+    if cycles is None or heel_strikes is None or len(cycles) == 0:
+        return False, ["gait_cycle_validation_failed:no_cycles"]
+
+    errors: List[str] = []
+    cycle_has_error: List[bool] = []
+    height_cm = metadata.get("height_cm")
+    height_m = float(height_cm) / 100.0 if height_cm is not None and np.isfinite(height_cm) else np.nan
+
+    for i in range(len(cycles)):
+        has_error = False
+        if i + 1 >= len(heel_strikes):
+            break
+
+        stride_time = float(heel_strikes[i + 1] - heel_strikes[i]) / float(sampling_rate)
+        # Heel-strike detector can identify step events in some recordings, so keep a wider lower bound.
+        if not (0.25 <= stride_time <= 2.0):
+            errors.append(f"cycle_{i}_stride_time_outlier:{stride_time:.2f}s")
+            has_error = True
+
+        walking_speed_mps = metadata.get("walking_speed_mps")
+        if walking_speed_mps is not None and np.isfinite(walking_speed_mps) and float(walking_speed_mps) > 0:
+            step_length_m = 0.5 * float(walking_speed_mps) * stride_time
+            if not (0.10 <= step_length_m <= 1.20):
+                errors.append(f"cycle_{i}_step_length_outlier:{step_length_m:.2f}m")
+                has_error = True
+
+        cycle_angles = compute_joint_angles_deg(cycles[i])
+        knee_left = cycle_angles.get("knee_left", np.array([]))
+        knee_right = cycle_angles.get("knee_right", np.array([]))
+        if knee_left.size and knee_right.size:
+            knee_curve = np.nanmean(np.vstack([knee_left, knee_right]), axis=0)
+        elif knee_left.size:
+            knee_curve = knee_left
+        elif knee_right.size:
+            knee_curve = knee_right
+        else:
+            knee_curve = np.array([])
+
+        knee_rom = float(np.nanmax(knee_curve) - np.nanmin(knee_curve)) if knee_curve.size else np.nan
+        if np.isfinite(knee_rom) and knee_rom < 5.0:
+            errors.append(f"cycle_{i}_knee_rom_too_low:{knee_rom:.1f}deg")
+            has_error = True
+
+        cycle_has_error.append(has_error)
+
+    invalid_ratio = (sum(cycle_has_error) / len(cycle_has_error)) if cycle_has_error else 1.0
+    return invalid_ratio <= 0.5, errors
+
+
 def _smoothness_score(coords: np.ndarray) -> float:
     if len(coords) < 6:
         return 0.5
@@ -409,7 +551,7 @@ def clean_and_normalize_trial(
 
     angles = compute_joint_angles_deg(normalized_coords)
     angles = remove_angle_spikes(angles, config.mad_threshold)
-    angles = clip_to_physiological_bounds(angles, config.physiological_bounds)
+    angles, angle_violation_ratio = clip_to_physiological_bounds(angles, config.physiological_bounds)
 
     heel_strikes = detect_heel_strikes(
         normalized_coords,
@@ -429,8 +571,22 @@ def clean_and_normalize_trial(
     if cycle_result.mean_cycle is None:
         reasons.append("insufficient_gait_cycles")
 
+    if cycle_result.cycles is not None and cycle_result.heel_strikes is not None:
+        cycles_valid, cycle_errors = validate_gait_cycles(
+            cycles=cycle_result.cycles,
+            heel_strikes=cycle_result.heel_strikes,
+            sampling_rate=sampling_rate,
+            metadata=metadata,
+        )
+        if not cycles_valid:
+            reasons.append("gait_cycle_validation_failed")
+            reasons.extend(cycle_errors)
+
     smoothness = _smoothness_score(normalized_coords)
     quality, components = compute_quality_score(avg_conf, gap_pct_after, smoothness)
+    components["physiologic_bound_violation_ratio"] = float(angle_violation_ratio)
+    if angle_violation_ratio > 0.10:
+        quality = float(max(0.0, quality - 0.10))
 
     if quality < config.quality_threshold:
         reasons.append(

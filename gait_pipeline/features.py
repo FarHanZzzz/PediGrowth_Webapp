@@ -157,7 +157,9 @@ def extract_core_features(
     if knee_left.size and knee_right.size:
         lr_knee_rmsd = float(np.sqrt(np.nanmean((knee_left - knee_right) ** 2)))
 
-    # Keep the flat metric list to 11 deterministic baseline features.
+    jerk_metric = _jerk_metric(cleaned_coords, sampling_rate)
+
+    # Keep deterministic baseline metrics as default model features.
     scalar_metrics = {
         "step_length_mean": _safe_mean(step_lengths),
         "stride_length_mean": _safe_mean(stride_lengths),
@@ -170,6 +172,7 @@ def extract_core_features(
         "ankle_rom_deg": _safe_nan_ptp(ankle_curve_mean),
         "lr_knee_rmsd": lr_knee_rmsd,
         "temporal_asymmetry_index": temporal_asymmetry,
+        "jerk_metric": jerk_metric,
     }
 
     # Additional curves and clinically useful phase/peak diagnostics are saved separately.
@@ -201,7 +204,7 @@ def extract_core_features(
             "ankle_peak_t": ankle_peak_t,
         },
         "smoothness_experimental": {
-            "jerk_mean": _jerk_metric(cleaned_coords, sampling_rate),
+            "jerk_mean": jerk_metric,
             "stride_time_cv": _safe_std(stride_time) / _safe_mean(stride_time)
             if np.isfinite(_safe_mean(stride_time)) and _safe_mean(stride_time) > 0
             else np.nan,
@@ -220,6 +223,7 @@ def extract_core_features(
         "ankle_rom_deg": "validated",
         "lr_knee_rmsd": "experimental",
         "temporal_asymmetry_index": "validated",
+        "jerk_metric": "experimental",
     }
 
     return FeatureResult(
