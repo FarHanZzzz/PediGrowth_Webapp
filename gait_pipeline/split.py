@@ -67,23 +67,62 @@ def split_by_subject(
         raise ValueError("train/val/test sizes must sum to 1.0")
 
     subject_df = _build_subject_table(features_df, stratify_keys=stratify_keys)
+
+    # Deterministic fallback for very small cohorts.
+    if len(subject_df) < 3:
+        split_map = {}
+        ordered = subject_df.sort_values("subject_id").reset_index(drop=True)
+        if len(ordered) >= 1:
+            split_map[ordered.loc[0, "subject_id"]] = "train"
+        if len(ordered) >= 2:
+            split_map[ordered.loc[1, "subject_id"]] = "test"
+
+        out = features_df.copy()
+        out["split"] = out["subject_id"].map(split_map).fillna("train")
+        splits = {
+            "train": out[out["split"] == "train"].reset_index(drop=True),
+            "val": out[out["split"] == "val"].reset_index(drop=True),
+            "test": out[out["split"] == "test"].reset_index(drop=True),
+        }
+        return out, splits
+
     stratify = _safe_stratify(subject_df["stratify_key"])
 
-    train_subjects, temp_subjects = train_test_split(
-        subject_df,
-        test_size=(1.0 - train_size),
-        random_state=random_state,
-        stratify=stratify,
-    )
+    try:
+        train_subjects, temp_subjects = train_test_split(
+            subject_df,
+            test_size=(1.0 - train_size),
+            random_state=random_state,
+            stratify=stratify,
+        )
+    except ValueError:
+        train_subjects, temp_subjects = train_test_split(
+            subject_df,
+            test_size=(1.0 - train_size),
+            random_state=random_state,
+            stratify=None,
+        )
 
     val_ratio_within_temp = val_size / (val_size + test_size)
     temp_stratify = _safe_stratify(temp_subjects["stratify_key"])
-    val_subjects, test_subjects = train_test_split(
-        temp_subjects,
-        test_size=(1.0 - val_ratio_within_temp),
-        random_state=random_state,
-        stratify=temp_stratify,
-    )
+    if len(temp_subjects) < 2:
+        val_subjects = temp_subjects.iloc[0:0].copy()
+        test_subjects = temp_subjects.copy()
+    else:
+        try:
+            val_subjects, test_subjects = train_test_split(
+                temp_subjects,
+                test_size=(1.0 - val_ratio_within_temp),
+                random_state=random_state,
+                stratify=temp_stratify,
+            )
+        except ValueError:
+            val_subjects, test_subjects = train_test_split(
+                temp_subjects,
+                test_size=(1.0 - val_ratio_within_temp),
+                random_state=random_state,
+                stratify=None,
+            )
 
     split_map = {}
     for sid in train_subjects["subject_id"]:
