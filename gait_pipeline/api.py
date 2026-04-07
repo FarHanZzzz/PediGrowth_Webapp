@@ -12,6 +12,7 @@ from .cleaning import clean_and_normalize_trial, fill_missing_metadata_with_popu
 from .config import PipelineConfig, load_config
 from .features import extract_core_features
 from .io import load_trial_data
+from .validation_codes import ERROR_CODES, summarize_error_codes
 
 
 class TrialRequest(BaseModel):
@@ -44,6 +45,22 @@ class TrialResponse(BaseModel):
     disclaimer: str
 
 
+class PreflightRequest(BaseModel):
+    filename: str
+    content_type: str
+    size_bytes: int = Field(gt=0)
+    age_months: float
+    condition: Optional[str] = None
+    severity: Optional[int] = None
+
+
+class PreflightResponse(BaseModel):
+    accepted: bool
+    error_codes: List[str]
+    message: str
+    disclaimer: str
+
+
 class APIRuntime:
     def __init__(self, config: PipelineConfig, failure_log_path: Path):
         self.config = config
@@ -56,6 +73,40 @@ class APIRuntime:
 
 
 DISCLAIMER_TEXT = "This is a screening support tool, not a diagnostic device."
+ALLOWED_MIME_TYPES = {"video/mp4", "video/quicktime"}
+MAX_VIDEO_BYTES = 100 * 1024 * 1024
+MIN_AGE_MONTHS = 36
+MAX_AGE_MONTHS = 216
+
+
+def _run_preflight(req: PreflightRequest) -> PreflightResponse:
+    error_codes: List[str] = []
+
+    if req.content_type.lower() not in ALLOWED_MIME_TYPES:
+        error_codes.append("unsupported_file_type")
+
+    if req.size_bytes > MAX_VIDEO_BYTES:
+        error_codes.append("file_too_large")
+
+    if not (MIN_AGE_MONTHS <= req.age_months <= MAX_AGE_MONTHS):
+        error_codes.append("invalid_age")
+
+    if req.condition is not None and req.condition not in {"CP", "TD"}:
+        error_codes.append("invalid_condition")
+
+    if req.severity is not None and not (0 <= req.severity <= 3):
+        error_codes.append("invalid_severity")
+
+    if req.condition == "TD" and req.severity not in {None, 0}:
+        if "invalid_severity" not in error_codes:
+            error_codes.append("invalid_severity")
+
+    return PreflightResponse(
+        accepted=len(error_codes) == 0,
+        error_codes=error_codes,
+        message=summarize_error_codes(error_codes),
+        disclaimer=DISCLAIMER_TEXT,
+    )
 
 
 def _with_metric_aliases(metrics: Dict[str, float]) -> Dict[str, float]:
@@ -116,6 +167,14 @@ def build_app(
     @app.get("/health")
     def health() -> Dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/validation-codes")
+    def validation_codes() -> Dict[str, Dict[str, str]]:
+        return {"error_codes": ERROR_CODES}
+
+    @app.post("/preflight-upload", response_model=PreflightResponse)
+    def preflight_upload(req: PreflightRequest) -> PreflightResponse:
+        return _run_preflight(req)
 
     @app.post("/analyze-trial", response_model=TrialResponse)
     def analyze_trial(req: TrialRequest) -> TrialResponse:
