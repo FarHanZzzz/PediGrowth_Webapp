@@ -1,4 +1,4 @@
-// GAITBRIDGE — Pose Landmark Constants
+// PEDI-GROWTH — Pose Landmark Constants
 // MediaPipe Pose Landmarker indices for the 33-point body model.
 // Source: https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker
 

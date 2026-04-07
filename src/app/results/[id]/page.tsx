@@ -9,6 +9,7 @@ import {
   Camera,
   Download,
   Info,
+  MessageCircle,
   Microscope,
   PlayCircle,
   RefreshCw,
@@ -18,11 +19,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import AnnotatedVideoPlayer from "@/components/results/AnnotatedVideoPlayer";
+import { getResult } from "@/lib/session/videoStore";
 import AnalysisTracePanel from "@/components/results/AnalysisTracePanel";
 import KeyFrameGallery from "@/components/results/KeyFrameGallery";
 import EventTimeline from "@/components/results/EventTimeline";
 import HowAnalysisWorksPanel from "@/components/results/HowAnalysisWorksPanel";
+import ClinicalReferencesPanel from "@/components/results/ClinicalReferencesPanel";
 import RunProvenanceBadge from "@/components/results/RunProvenanceBadge";
+import { exportReportAsPDF } from "@/lib/export/generatePDF";
 import { buildKeyFrames } from "@/lib/trace/buildKeyFrames";
 import { summarizeDetectionPath } from "@/lib/trace/summarizeDetectionPath";
 import { buildRunProvenance } from "@/lib/session/runProvenance";
@@ -32,15 +36,15 @@ type ResultTab = "summary" | "video" | "evidence";
 
 const TABS: { key: ResultTab; label: string; icon: typeof BarChart3 }[] = [
   { key: "summary", label: "Summary", icon: BarChart3 },
-  { key: "video", label: "Hero Video", icon: PlayCircle },
+  { key: "video", label: "Annotated Video", icon: PlayCircle },
   { key: "evidence", label: "Evidence", icon: Microscope },
 ];
 
 const CONCERN_BADGE_STYLES: Record<string, string> = {
-  none: "bg-green-50 text-green-700 border-green-200",
-  mild: "bg-amber-50 text-amber-700 border-amber-200",
-  moderate: "bg-orange-50 text-orange-700 border-orange-200",
-  significant: "bg-red-50 text-red-700 border-red-200",
+  none: "bg-secondary-container text-secondary-foreground",
+  mild: "bg-tertiary-fixed/45 text-foreground",
+  moderate: "bg-orange-100 text-orange-900",
+  significant: "bg-error-container text-on-error-container",
 };
 
 const CONCERN_LABELS: Record<string, string> = {
@@ -94,9 +98,19 @@ export default function ResultsPage() {
   const [exportAvailable, setExportAvailable] = useState(false);
 
   useEffect(() => {
-    const raw = sessionStorage.getItem(`gaitbridge_result_${resultId}`);
+    // Try sessionStorage first (fast, same-session), then IndexedDB (persistent)
+    const raw = sessionStorage.getItem(`pedigrowth_result_${resultId}`);
     if (raw) {
       setResult(normalizeResult(raw));
+    } else {
+      // Fallback to IndexedDB for persistence across page refreshes
+      getResult(resultId).then((stored) => {
+        if (stored) {
+          setResult(normalizeResult(JSON.stringify(stored)));
+          // Re-populate sessionStorage for fast subsequent access
+          sessionStorage.setItem(`pedigrowth_result_${resultId}`, JSON.stringify(stored));
+        }
+      }).catch(() => {});
     }
   }, [resultId]);
 
@@ -107,7 +121,7 @@ export default function ResultsPage() {
       result.trace?.sessionId ??
       (() => {
         try {
-          const sessionData = sessionStorage.getItem("gaitbridge_session");
+          const sessionData = sessionStorage.getItem("pedigrowth_session");
           if (!sessionData) return null;
           return JSON.parse(sessionData).sessionId ?? null;
         } catch {
@@ -200,13 +214,13 @@ export default function ResultsPage() {
 
   if (isValidationFailure) {
     return (
-      <div className="min-h-dvh bg-gradient-to-b from-background to-muted/30 px-4 py-8">
+      <div className="px-4 py-8">
         <div className="mx-auto max-w-lg space-y-5">
           <div className="flex justify-center">
             <RunProvenanceBadge run={run} />
           </div>
 
-          <Card className="border-red-200 bg-red-50/70">
+          <Card className="bg-error-container/65">
             <CardHeader className="pb-2">
               <CardTitle className="text-base text-red-900">
                 Validation failed before real analysis could complete
@@ -214,7 +228,7 @@ export default function ResultsPage() {
             </CardHeader>
             <CardContent className="space-y-3 text-sm text-red-900/85">
               <p>{run.failureReason ?? "The pipeline stopped before producing a trustworthy result."}</p>
-              <div className="rounded-lg bg-white/70 p-3 text-xs">
+              <div className="rounded-xl bg-surface-container-lowest/80 p-3 text-xs">
                 <p><strong>Stage:</strong> {run.failureStage ?? "unknown"}</p>
                 <p><strong>Source:</strong> {run.sourceClipFilename ?? "unknown clip"}</p>
                 <p><strong>Model:</strong> {run.modelLabel}</p>
@@ -231,7 +245,7 @@ export default function ResultsPage() {
               <Camera className="h-4 w-4" />
               Try Another Clip
             </Button>
-            <Button onClick={() => router.push("/start")} variant="outline" className="flex-1">
+            <Button onClick={() => router.push("/start")} variant="secondary" className="flex-1">
               Start Over
             </Button>
           </div>
@@ -242,13 +256,13 @@ export default function ResultsPage() {
 
   if (isCannotAssessRealRun) {
     return (
-      <div className="min-h-dvh bg-gradient-to-b from-background to-muted/30 px-4 py-8">
+      <div className="px-4 py-8">
         <div className="mx-auto max-w-lg space-y-6">
           <div className="flex justify-center">
             <RunProvenanceBadge run={run} />
           </div>
 
-          <div className="rounded-xl border-2 border-red-200 bg-red-50 p-4">
+          <div className="rounded-[1.2rem] bg-error-container p-4">
             <div className="flex gap-3">
               <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
               <div>
@@ -268,7 +282,7 @@ export default function ResultsPage() {
           </div>
 
           {result.quality.retakeInstructions && (
-            <Card>
+            <Card className="bg-surface-container-low">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm">How to get a better recording</CardTitle>
               </CardHeader>
@@ -283,7 +297,7 @@ export default function ResultsPage() {
               <Camera className="h-4 w-4" />
               Record Again
             </Button>
-            <Button onClick={() => router.push("/start")} variant="outline" className="flex-1">
+            <Button onClick={() => router.push("/start")} variant="secondary" className="flex-1">
               Start Over
             </Button>
           </div>
@@ -293,9 +307,9 @@ export default function ResultsPage() {
   }
 
   return (
-    <div className="min-h-dvh bg-gradient-to-b from-background to-muted/30">
+    <div className="pb-6">
       {isBestEffort && (
-        <div className="border-b border-blue-200 bg-blue-50 px-4 py-2">
+        <div className="bg-secondary-container/70 px-4 py-2">
           <p className="text-xs text-blue-700 flex items-center gap-2">
             <Info className="h-3.5 w-3.5" />
             <span>
@@ -305,7 +319,7 @@ export default function ResultsPage() {
         </div>
       )}
 
-      <div className="mx-auto max-w-3xl px-4 py-6 space-y-5">
+      <div className="mx-auto max-w-5xl space-y-5 px-4 py-6">
         <div className="text-center space-y-3">
           <div className="flex flex-wrap items-center justify-center gap-2">
             <RunProvenanceBadge run={run} />
@@ -317,7 +331,7 @@ export default function ResultsPage() {
             </Badge>
           </div>
 
-          <h1 className="text-2xl font-bold">Results for {nickname}</h1>
+          <h1 data-display="true" className="text-3xl font-semibold">Results for {nickname}</h1>
           <p className="text-sm text-muted-foreground max-w-2xl mx-auto">
             Toward-camera front-view observational screening with visible evidence, explicit confidence, and no hidden fallback.
           </p>
@@ -331,7 +345,7 @@ export default function ResultsPage() {
           </div>
         </div>
 
-        <Card className="border-primary/20 bg-primary/5">
+        <Card className="bg-surface-container-low">
           <CardContent className="grid gap-3 p-4 sm:grid-cols-3">
             <div>
               <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Summary</p>
@@ -356,7 +370,7 @@ export default function ResultsPage() {
           </CardContent>
         </Card>
 
-        <div className="flex rounded-lg border bg-muted/30 p-0.5">
+        <div className="flex rounded-[1rem] bg-surface-container-low p-1">
           {TABS.map((tab) => {
             const Icon = tab.icon;
             return (
@@ -365,7 +379,7 @@ export default function ResultsPage() {
                 onClick={() => setActiveTab(tab.key)}
                 className={`flex-1 flex items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium transition-colors cursor-pointer ${
                   activeTab === tab.key
-                    ? "bg-background shadow-sm text-foreground"
+                    ? "bg-surface-container-lowest shadow-sm text-foreground"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
@@ -378,7 +392,7 @@ export default function ResultsPage() {
 
         {activeTab === "summary" && (
           <div className="space-y-4">
-            <Card>
+            <Card className="bg-surface-container-lowest">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm">Movement Observations</CardTitle>
               </CardHeader>
@@ -389,7 +403,7 @@ export default function ResultsPage() {
 
                   if (isSuppressed) {
                     return (
-                      <div key={domain.key} className="flex items-center justify-between py-1.5 opacity-50">
+                      <div key={domain.key} className="flex items-center justify-between rounded-2xl bg-surface-container-low p-3 opacity-50">
                         <div>
                           <p className="text-sm font-medium">{domain.label}</p>
                           <p className="text-xs text-muted-foreground">{domain.desc}</p>
@@ -402,7 +416,7 @@ export default function ResultsPage() {
                   }
 
                   return (
-                    <div key={domain.key} className="flex items-center justify-between py-1.5">
+                    <div key={domain.key} className="flex items-center justify-between rounded-2xl bg-surface-container-low p-3">
                       <div>
                         <p className="text-sm font-medium">{domain.label}</p>
                         <p className="text-xs text-muted-foreground">{domain.desc}</p>
@@ -419,7 +433,7 @@ export default function ResultsPage() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="bg-surface-container-lowest">
               <CardHeader
                 className="pb-0 cursor-pointer"
                 onClick={() => setDetailsOpen((value) => !value)}
@@ -436,7 +450,7 @@ export default function ResultsPage() {
                   {Object.entries(result.features).map(([key, metric]) => (
                     <div
                       key={key}
-                      className={`flex items-center justify-between text-xs py-1 ${
+                      className={`flex items-center justify-between rounded-xl bg-surface-container-low px-3 py-2 text-xs ${
                         metric.suppressed ? "opacity-40" : ""
                       }`}
                     >
@@ -462,18 +476,60 @@ export default function ResultsPage() {
             <HowAnalysisWorksPanel result={result} />
 
             <div className="flex flex-wrap gap-3">
+              <Button
+                variant="secondary"
+                className="flex-1 gap-2 text-xs"
+                onClick={() => router.push(`/results/${resultId}/refine`)}
+              >
+                <MessageCircle className="h-3.5 w-3.5" />
+                Add follow-up details
+              </Button>
               {hasTrace && (
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   className="flex-1 gap-2 text-xs"
                   onClick={() => setActiveTab("video")}
                 >
                   <Video className="h-3.5 w-3.5" />
-                  View hero video
+                  View annotated video
                 </Button>
               )}
               <Button
-                variant="outline"
+                variant="secondary"
+                className="flex-1 gap-2 text-xs"
+                onClick={() => {
+                  const sessionRaw = sessionStorage.getItem("pedigrowth_session");
+                  const session = sessionRaw ? JSON.parse(sessionRaw) : {};
+                  // Build flat metrics map from feature values
+                  const metricsMap: Record<string, number | string> = {};
+                  if (result.features) {
+                    for (const [key, val] of Object.entries(result.features)) {
+                      if (val && typeof val === 'object' && 'value' in val) {
+                        metricsMap[key] = (val as { value: number }).value;
+                      }
+                    }
+                  }
+                  exportReportAsPDF({
+                    childNickname: session.nickname || "Unknown",
+                    ageMonths: session.ageMonths || 0,
+                    assessmentDate: new Date().toLocaleDateString(),
+                    assessmentId: resultId,
+                    concerns: result.concerns as unknown as Record<string, string>,
+                    metrics: metricsMap,
+                    qualityTier: result.quality?.result || "unknown",
+                    assessmentMode: result.quality?.assessmentMode || "unknown",
+                    confidenceNotes: result.quality?.confidenceNotes
+                      ? [result.quality.confidenceNotes].flat()
+                      : [],
+                  });
+                }}
+                id="btn-export-pdf"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Export Report
+              </Button>
+              <Button
+                variant="secondary"
                 className="flex-1 gap-2 text-xs"
                 onClick={() => router.push("/capture")}
               >
@@ -486,7 +542,7 @@ export default function ResultsPage() {
 
         {activeTab === "video" && (
           <div className="space-y-4">
-            <Card className="bg-muted/20">
+            <Card className="bg-surface-container-low">
               <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
                 <div>
                   <p className="text-sm font-semibold">Hero artifact status</p>
@@ -498,7 +554,7 @@ export default function ResultsPage() {
                 </div>
                 {exportAvailable && result.run.exportArtifactPath && (
                   <a href={result.run.exportArtifactPath} download className="inline-flex">
-                    <Button variant="outline" className="gap-2 text-xs">
+                    <Button variant="secondary" className="gap-2 text-xs">
                       <Download className="h-3.5 w-3.5" />
                       Download Hero MP4
                     </Button>
@@ -577,6 +633,11 @@ export default function ResultsPage() {
           <ArrowLeft className="h-3.5 w-3.5" />
           Back to start
         </Button>
+
+        {/* P1-09: Clinical References */}
+        <div className="mt-4">
+          <ClinicalReferencesPanel />
+        </div>
       </div>
     </div>
   );

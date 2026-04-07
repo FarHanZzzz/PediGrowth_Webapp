@@ -1,4 +1,4 @@
-# GAITBRIDGE — Data Model
+# Pedi-Growth — Data Model
 
 **Version:** 0.1.0-draft | **Date:** 2026-04-06
 

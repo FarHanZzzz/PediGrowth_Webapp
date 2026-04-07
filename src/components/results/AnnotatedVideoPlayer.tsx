@@ -1,6 +1,6 @@
 "use client";
 
-// GAITBRIDGE — Annotated Video Player (v2 — Annotation Quality Recovery)
+// PEDI-GROWTH — Annotated Video Player (v2 — Annotation Quality Recovery)
 //
 // Video + Canvas overlay, synchronized via requestAnimationFrame.
 //
@@ -169,7 +169,16 @@ export default function AnnotatedVideoPlayer({ trace, videoUrl, jumpToFrameIndex
     setCurrentFrameIndex((prev) => (prev === frameIdx ? prev : frameIdx));
 
     const frame = trace.frames[frameIdx];
-    if (!frame) return;
+    if (!frame) {
+      ctx.clearRect(0, 0, cssW, cssH);
+      return;
+    }
+
+    // Fix: If video plays past the available tracking data, clear overlay instead of freezing
+    if (Math.abs(frame.timestampMs - timeMs) > 250) {
+      ctx.clearRect(0, 0, cssW, cssH);
+      return;
+    }
 
     const trailStart = Math.max(0, frameIdx - 8);
     const ankleTrailHistory = trace.frames.slice(trailStart, frameIdx + 1);

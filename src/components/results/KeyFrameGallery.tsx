@@ -1,6 +1,6 @@
 "use client";
 
-// GAITBRIDGE — Key Frame Gallery
+// PEDI-GROWTH — Key Frame Gallery
 // Thumbnails of important frames extracted from the analysis.
 
 import { Camera, Footprints, AlertTriangle, ArrowLeftRight } from "lucide-react";

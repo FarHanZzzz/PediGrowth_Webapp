@@ -43,6 +43,11 @@ outputs/
 dataset/
 data/*
 !data/manifest.csv
+!data/training_reports/
+
+# Unused video samples
+video/
 
 # OS files
 .DS_Store
+Thumbs.db

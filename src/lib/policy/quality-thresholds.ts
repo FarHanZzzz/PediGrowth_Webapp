@@ -1,4 +1,4 @@
-// GAITBRIDGE — Quality Thresholds Policy (Graceful Degradation)
+// PEDI-GROWTH — Quality Thresholds Policy (Graceful Degradation)
 //
 // LOW-RESOURCE DESIGN PRINCIPLE:
 // This product serves users with imperfect equipment, lighting, and space.

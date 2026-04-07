@@ -1,4 +1,4 @@
-// GAITBRIDGE — Concern Profile Computation (Frontal-First + Graceful Degradation)
+// PEDI-GROWTH — Concern Profile Computation (Frontal-First + Graceful Degradation)
 //
 // GRACEFUL DEGRADATION PRINCIPLE:
 // In best-effort mode, concerns are CAPPED at 'mild' and follow-up

@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from .cleaning import clean_and_normalize_trial, fill_missing_metadata_with_population_medians
@@ -180,6 +181,19 @@ def build_app(
     failure_log_path: Optional[str | Path] = None,
 ) -> FastAPI:
     app = FastAPI(title="Pedi-Growth Deterministic Gait API", version="0.1.0")
+
+    # ── CORS: Allow frontend (Next.js) to call this API ──
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        ],
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization"],
+    )
+
     config = load_config(config_path)
     selected_failure_log = failure_log_path or config.failure_log_path or "outputs/api_failure_log.jsonl"
     runtime = APIRuntime(config, Path(selected_failure_log))
@@ -297,7 +311,62 @@ def build_app(
             disclaimer=DISCLAIMER_TEXT,
         )
 
+    # ── XGBoost prediction from landmarks ──
+    @app.post("/predict-from-landmarks")
+    def predict_from_landmarks(req: LandmarkPredictRequest) -> Dict[str, Any]:
+        """Run XGBoost gait risk prediction from extracted landmark frames."""
+        try:
+            from .gait_inference import GaitPredictor
+            predictor = GaitPredictor()
+
+            frames = []
+            for frame in req.frames:
+                frames.append({
+                    'l_hip': tuple(frame.get('l_hip', [0, 0])),
+                    'l_knee': tuple(frame.get('l_knee', [0, 0])),
+                    'l_ankle': tuple(frame.get('l_ankle', [0, 0])),
+                    'r_hip': tuple(frame.get('r_hip', [0, 0])),
+                    'r_knee': tuple(frame.get('r_knee', [0, 0])),
+                    'r_ankle': tuple(frame.get('r_ankle', [0, 0])),
+                    'l_shoulder': tuple(frame.get('l_shoulder', [0, 0])),
+                    'r_shoulder': tuple(frame.get('r_shoulder', [0, 0])),
+                })
+
+            patient_info = req.patient_info or {}
+            result = predictor.predict_from_landmarks(frames, patient_info)
+
+            if result is None:
+                return {
+                    'success': False,
+                    'error': 'Insufficient landmark data for prediction (need ≥10 frames with visible joints).',
+                    'disclaimer': DISCLAIMER_TEXT,
+                }
+
+            return {
+                'success': True,
+                'predictions': result,
+                'disclaimer': DISCLAIMER_TEXT,
+            }
+        except Exception as exc:
+            return {
+                'success': False,
+                'error': f'Prediction failed: {str(exc)}',
+                'disclaimer': DISCLAIMER_TEXT,
+            }
+
     return app
+
+
+class LandmarkPredictRequest(BaseModel):
+    """Request body for /predict-from-landmarks."""
+    frames: List[Dict[str, Any]] = Field(
+        ...,
+        description="List of landmark frame dicts with keys like l_hip, r_hip, etc."
+    )
+    patient_info: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Optional patient demographics: Sex, Age, Height, Weight, BMI",
+    )
 
 
 app = build_app()

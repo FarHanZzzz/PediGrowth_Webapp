@@ -1,4 +1,4 @@
-// GAITBRIDGE — Routing Rules Policy
+// PEDI-GROWTH — Routing Rules Policy
 // Pure function. No side effects. 100% branch coverage required.
 //
 // CRITICAL DESIGN DECISION (OQ-001 / ADR-001):

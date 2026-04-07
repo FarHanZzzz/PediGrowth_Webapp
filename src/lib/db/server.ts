@@ -1,4 +1,4 @@
-// GAITBRIDGE — Supabase Server Client
+// PEDI-GROWTH — Supabase Server Client
 // Use this in Server Components, API Routes, and Server Actions.
 
 import { createServerClient } from "@supabase/ssr";

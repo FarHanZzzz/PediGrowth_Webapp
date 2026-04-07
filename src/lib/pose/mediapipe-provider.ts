@@ -1,4 +1,4 @@
-// GAITBRIDGE — MediaPipe Pose Provider (Real Implementation)
+// PEDI-GROWTH — MediaPipe Pose Provider (Real Implementation)
 // Uses @mediapipe/tasks-vision PoseLandmarker with CDN-loaded WASM & model.
 //
 // CRITICAL: MediaPipe detectForVideo() requires STRICTLY MONOTONICALLY

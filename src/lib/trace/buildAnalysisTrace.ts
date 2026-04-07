@@ -1,4 +1,4 @@
-// GAITBRIDGE — Build Analysis Trace
+// PEDI-GROWTH — Build Analysis Trace
 // Converts raw pipeline data into the single AnalysisTrace object.
 // This is called ONCE after the pipeline completes.
 // Every UI component reads from this trace — no duplicated logic.

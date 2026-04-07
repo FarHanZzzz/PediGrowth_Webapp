@@ -1,4 +1,4 @@
-// GAITBRIDGE — Quality Assessment Types
+// PEDI-GROWTH — Quality Assessment Types
 // Graceful degradation: full_assessment / best_effort / cannot_assess
 
 import type { QualityResult, CameraAngle, AssessmentMode } from '@/lib/types';

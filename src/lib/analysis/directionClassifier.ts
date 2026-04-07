@@ -1,4 +1,4 @@
-// GAITBRIDGE — Direction Classifier (Annotation Quality Recovery)
+// PEDI-GROWTH — Direction Classifier (Annotation Quality Recovery)
 //
 // Classifies walking direction: toward camera vs away from camera.
 // Uses the hip-center Y trend over time.

@@ -1,4 +1,4 @@
-# GAITBRIDGE — Team Collaboration Protocol
+# Pedi-Growth — Team Collaboration Protocol
 
 **Version:** 0.1.0-draft | **Date:** 2026-04-06
 

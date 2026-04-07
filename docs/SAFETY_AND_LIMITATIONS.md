@@ -1,4 +1,4 @@
-# GAITBRIDGE — Safety, Privacy, and Limitations
+# Pedi-Growth — Safety, Privacy, and Limitations
 
 **Version:** 0.1.0-draft | **Date:** 2026-04-06
 
@@ -6,7 +6,7 @@
 
 ## 1. Non-Diagnostic Disclaimer (Required on all results)
 
-> **Important:** GAITBRIDGE is a gait concern documentation and monitoring support tool. It does NOT diagnose medical conditions, predict diseases, or replace professional clinical evaluation. All observations are based on automated video analysis with inherent limitations. Always consult qualified healthcare professionals for clinical decisions regarding your child's health.
+> **Important:** Pedi-Growth is a gait concern documentation and monitoring support tool. It does NOT diagnose medical conditions, predict diseases, or replace professional clinical evaluation. All observations are based on automated video analysis with inherent limitations. Always consult qualified healthcare professionals for clinical decisions regarding your child's health.
 
 ---
 

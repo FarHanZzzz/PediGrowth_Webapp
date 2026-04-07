@@ -1,4 +1,4 @@
-# GAITBRIDGE — Product Requirements Document
+# Pedi-Growth — Product Requirements Document
 
 **Version:** 0.1.0-draft
 **Date:** 2026-04-06
@@ -9,13 +9,13 @@
 
 ## 1. Executive Summary
 
-GAITBRIDGE is a mobile-first pediatric gait concern analysis, monitoring, and care-navigation platform. It turns ordinary smartphone videos into structured, explainable gait concern summaries and clinician-ready packets — reducing subjectivity, improving follow-up consistency, and helping families escalate care appropriately.
+Pedi-Growth is a mobile-first pediatric gait concern analysis, monitoring, and care-navigation platform. It turns ordinary smartphone videos into structured, explainable gait concern summaries and clinician-ready packets — reducing subjectivity, improving follow-up consistency, and helping families escalate care appropriately.
 
 **Core value proposition:** Low-cost, zero-new-hardware, mobile-first, explainable, quality-gated, privacy-aware, longitudinal — useful to both caregivers and clinicians.
 
 **Primary product promise:** "Help families and clinicians capture, understand, and communicate gait-related concerns more consistently and earlier."
 
-**What GAITBRIDGE is NOT:**
+**What Pedi-Growth is NOT:**
 - A diagnostic tool
 - A disease-probability engine
 - A neurological disorder classifier

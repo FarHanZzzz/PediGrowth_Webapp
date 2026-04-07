@@ -1,4 +1,4 @@
-// GAITBRIDGE — Temporal Smoothing (v2 — Annotation Quality Recovery)
+// PEDI-GROWTH — Temporal Smoothing (v2 — Annotation Quality Recovery)
 //
 // CHANGES FROM v1:
 // 1. Confidence-aware EMA: low-visibility landmarks lean harder on previous good position

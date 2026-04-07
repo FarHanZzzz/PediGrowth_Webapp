@@ -1,3 +1,21 @@
+"""
+PEDI-GROWTH — Legacy Baseline Model (RandomForest)
+====================================================
+⚠️  DEPRECATED FOR PRODUCTION INFERENCE.
+
+This file contains the legacy RandomForest baseline used during early
+prototyping. The production gait risk prediction model is XGBoost.
+
+Production inference:  gait_pipeline/gait_inference.py  (GaitPredictor class)
+Production training:   scripts/train_xgboost.py
+Trained model files:   gait_pipeline/models/xgb_*.json
+
+This file is retained for:
+  - Historical comparison against the XGBoost results
+  - Research experimentation with alternative model architectures
+  - End-to-end pipeline tests that use the RandomForest as a quick baseline
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

@@ -1,4 +1,4 @@
-# GAITBRIDGE — QA Protocol & Test Strategy
+# Pedi-Growth — QA Protocol & Test Strategy
 
 **Version:** 0.1.0-draft | **Date:** 2026-04-06
 

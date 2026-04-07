@@ -1,4 +1,4 @@
-// GAITBRIDGE — Policy Engine Index
+// PEDI-GROWTH — Policy Engine Index
 // Re-exports all policy modules for centralized access.
 
 export { routeChild, AGE_THRESHOLD_MONTHS } from './routing-rules';

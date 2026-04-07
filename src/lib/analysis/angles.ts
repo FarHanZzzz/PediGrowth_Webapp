@@ -1,4 +1,4 @@
-// GAITBRIDGE — Geometry Utilities
+// PEDI-GROWTH — Geometry Utilities
 // Pure math functions for joint angle computation.
 // No side effects. No dependencies on pose provider.
 

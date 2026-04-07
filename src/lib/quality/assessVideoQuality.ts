@@ -1,4 +1,4 @@
-// GAITBRIDGE — Real Video Quality Assessment
+// PEDI-GROWTH — Real Video Quality Assessment
 // Loads video, samples frames, runs pose detection, evaluates quality.
 
 import type { PoseProvider, LandmarkFrame } from '@/lib/types';

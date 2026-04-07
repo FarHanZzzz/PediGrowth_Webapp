@@ -1,4 +1,4 @@
-# GAITBRIDGE — System Architecture
+# Pedi-Growth — System Architecture
 
 **Version:** 0.1.0-draft | **Date:** 2026-04-06
 

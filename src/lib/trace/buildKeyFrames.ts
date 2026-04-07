@@ -1,4 +1,4 @@
-// GAITBRIDGE — Key Frame Extraction
+// PEDI-GROWTH — Key Frame Extraction
 // Identifies important frames for the key frame gallery.
 // Reads from AnalysisTrace — no duplicated logic.
 

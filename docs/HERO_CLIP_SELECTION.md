@@ -2,7 +2,7 @@
 
 ## Current status
 
-GAITBRIDGE demo lock is still blocked on one real approved hero clip.
+Pedi-Growth demo lock is still blocked on one real approved hero clip.
 
 - Required clip: `public/demo/videos/toward_good.mp4`
 - Required stance: frontal, toward camera, full body visible, stable camera, good lighting

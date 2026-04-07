@@ -1,6 +1,6 @@
-# GAITBRIDGE Judge Summary
+# Pedi-Growth Judge Summary
 
-GAITBRIDGE is a frontal-first observational gait screening and documentation prototype. It is not a gait lab replacement and it does not diagnose medical conditions.
+Pedi-Growth is a frontal-first observational gait screening and documentation prototype. It is not a gait lab replacement and it does not diagnose medical conditions.
 
 ## Hero demo path
 

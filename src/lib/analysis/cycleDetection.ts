@@ -1,4 +1,4 @@
-// GAITBRIDGE — Gait Cycle Detection (v2 — Annotation Quality Recovery)
+// PEDI-GROWTH — Gait Cycle Detection (v2 — Annotation Quality Recovery)
 //
 // CHANGES FROM v1:
 // 1. Direction-aware frontal step detection using L-R ankle-Y DIFFERENTIAL

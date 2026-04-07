@@ -19,7 +19,7 @@ from hero_overlay_lib import (
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Generate an offline geometry/sync report for a GAITBRIDGE hero trace.")
+    parser = argparse.ArgumentParser(description="Generate an offline geometry/sync report for a Pedi-Growth hero trace.")
     parser.add_argument("--video", required=True, help="Source video path")
     parser.add_argument("--trace", required=True, help="Analysis trace JSON path")
     parser.add_argument("--report", required=True, help="Output report JSON path")
@@ -38,7 +38,7 @@ def main():
     video_meta = ffprobe_video(video_path)
     trace = load_trace(trace_path)
 
-    with tempfile.TemporaryDirectory(prefix="gaitbridge-geometry-") as temp_dir:
+    with tempfile.TemporaryDirectory(prefix="Pedi-Growth-geometry-") as temp_dir:
         raw_dir = ensure_clean_dir(Path(temp_dir) / "raw")
         extract_frames(video_path, raw_dir)
         frame_paths = list_frame_paths(raw_dir)

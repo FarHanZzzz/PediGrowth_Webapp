@@ -1,4 +1,4 @@
-// GAITBRIDGE — Demo Fixtures (Frontal-First + Graceful Degradation)
+// PEDI-GROWTH — Demo Fixtures (Frontal-First + Graceful Degradation)
 // Seeded analysis results for fallback when MediaPipe is unavailable.
 // All scenarios are FRONTAL. Includes best-effort fixture.
 

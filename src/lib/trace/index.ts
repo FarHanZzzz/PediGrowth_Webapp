@@ -1,4 +1,4 @@
-// GAITBRIDGE — Trace Module Index
+// PEDI-GROWTH — Trace Module Index
 // Re-exports all trace utilities.
 
 export { buildAnalysisTrace } from './buildAnalysisTrace';

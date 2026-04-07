@@ -129,7 +129,7 @@ export default function RefinePage() {
 
   const resultData = useMemo(() => {
     if (typeof window === "undefined") return null;
-    const raw = sessionStorage.getItem(`gaitbridge_result_${resultId}`);
+    const raw = sessionStorage.getItem(`pedigrowth_result_${resultId}`);
     if (!raw) return null;
     return JSON.parse(raw) as {
       concerns: {
@@ -192,11 +192,11 @@ export default function RefinePage() {
     };
 
     // Update the result with refinement context
-    const raw = sessionStorage.getItem(`gaitbridge_result_${resultId}`);
+    const raw = sessionStorage.getItem(`pedigrowth_result_${resultId}`);
     if (raw) {
       const result = JSON.parse(raw);
       result.refinement = refinement;
-      sessionStorage.setItem(`gaitbridge_result_${resultId}`, JSON.stringify(result));
+      sessionStorage.setItem(`pedigrowth_result_${resultId}`, JSON.stringify(result));
     }
 
     // Back to results with refined context
@@ -204,13 +204,13 @@ export default function RefinePage() {
   }
 
   return (
-    <div className="min-h-dvh bg-gradient-to-b from-background to-muted/30 px-4 py-6 sm:px-6">
-      <div className="mx-auto max-w-lg">
-        <div className="mb-4 text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
+    <div className="px-4 py-6 sm:px-6">
+      <div className="mx-auto max-w-3xl">
+        <div className="clinical-layer mb-5 rounded-[1.8rem] px-6 py-7 text-center">
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-surface-container-lowest">
             <MessageCircle className="h-6 w-6 text-primary" />
           </div>
-          <h1 className="text-xl font-bold text-foreground">
+          <h1 data-display="true" className="text-3xl font-semibold text-foreground">
             A few follow-up details
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -222,12 +222,12 @@ export default function RefinePage() {
         <div className="space-y-4">
           {/* Side-view suggestion */}
           {showSideViewSuggestion && (
-            <Card className="border-blue-200 dark:border-blue-800/50 bg-blue-50/50 dark:bg-blue-950/10">
+            <Card className="bg-secondary-container/65">
               <CardContent className="p-4 text-xs">
-                <p className="font-medium text-blue-800 dark:text-blue-200 mb-1">
-                  💡 Optional: A side-view recording can unlock additional metrics
+                <p className="font-medium text-secondary-foreground mb-1">
+                  Optional: A side-view recording can unlock additional metrics
                 </p>
-                <p className="text-blue-700 dark:text-blue-300">
+                <p className="text-secondary-foreground/80">
                   Side-view video enables analysis of knee angles, ankle angles,
                   and trunk lean. This is optional — your front-view assessment
                   is already complete.
@@ -272,10 +272,10 @@ export default function RefinePage() {
                           key={opt.label}
                           type="button"
                           onClick={() => setBoolAnswers((p) => ({ ...p, [q.id]: opt.val }))}
-                          className={`touch-target rounded-lg border-2 p-2.5 text-sm font-medium transition-all ${
+                          className={`touch-target rounded-2xl border border-transparent p-2.5 text-sm font-medium transition-all ${
                             boolAnswers[q.id] === opt.val
-                              ? "border-primary/50 bg-primary/5 ring-1 ring-primary/30"
-                              : "border-border bg-card hover:bg-muted/50"
+                              ? "bg-secondary-container text-secondary-foreground"
+                              : "bg-surface-container-low hover:bg-surface-variant"
                           }`}
                         >
                           {opt.label}
@@ -330,7 +330,7 @@ export default function RefinePage() {
             className="w-full text-xs text-muted-foreground"
             onClick={() => router.push(`/results/${resultId}`)}
           >
-            ← Back to results (skip)
+            Back to results (skip)
           </Button>
         </div>
       </div>

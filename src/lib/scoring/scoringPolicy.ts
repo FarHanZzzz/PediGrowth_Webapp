@@ -1,4 +1,4 @@
-// GAITBRIDGE — Scoring Policy (Frontal-First + Graceful Degradation)
+// PEDI-GROWTH — Scoring Policy (Frontal-First + Graceful Degradation)
 //
 // LOW-RESOURCE DESIGN PRINCIPLE:
 // Produce partial, truthful, low-confidence results whenever SOME signal exists.

@@ -1,98 +1,135 @@
-# GAITBRIDGE (Pedi-Growth)
+# Pedi-Growth
 
-Pediatric gait concern analysis platform with a Next.js application layer and
-a deterministic Python gait-processing pipeline for reproducible experiments.
+A mobile-first platform that helps families and clinicians capture, understand,
+and communicate pediatric gait-related concerns more consistently and earlier.
 
-## Web Application (Next.js)
+> **⚠️ Clinical Disclaimer:** Pedi-Growth is a screening support tool — it does NOT diagnose medical conditions. Always consult qualified healthcare professionals for clinical decisions.
 
-### What GAITBRIDGE is
+## Architecture
 
-- A structured gait concern documentation workflow
-- A triage/monitoring support layer
-- A caregiver education and navigation layer
-- A clinician handoff/reporting workflow
+```
+┌─────────────────────────┐     ┌─────────────────────────┐
+│   Next.js Frontend      │────▶│   FastAPI Backend        │
+│   (React 19 + TS)       │     │   (Python + XGBoost)     │
+│                         │     │                         │
+│   • Video capture       │     │   • Deterministic gait   │
+│   • MediaPipe pose      │     │     pipeline             │
+│   • Concern scoring     │     │   • XGBoost inference    │
+│   • Results + PDF       │     │   • Trial analysis       │
+└─────────────────────────┘     └─────────────────────────┘
+```
 
-### What GAITBRIDGE is not
+## Quick Start
 
-- A diagnostic tool
-- A disease-probability engine
-- A substitute for clinical evaluation
-
-### Web app quick start
+### Frontend (Next.js)
 
 ```bash
+# Install dependencies
 npm install
+
+# Create environment file
 cp .env.example .env.local
+
+# Start dev server
 npm run dev
 ```
 
-### Web app verification
+Open [http://localhost:3000](http://localhost:3000)
+
+### Backend (Python Pipeline)
 
 ```bash
-npm run lint
-npm run type-check
-npm run test
-npm run build
-```
+# Create virtual environment (Python 3.10+)
+python -m venv .venv
+.venv/Scripts/activate   # Windows
+# source .venv/bin/activate  # macOS/Linux
 
-## Deterministic Gait Pipeline (Python)
-
-The repository also includes a deterministic preprocessing and baseline
-modeling stack under `gait_pipeline/` with:
-
-- Unified trial schema across CSV/NPY/JSON inputs
-- Cleaning + quality gates with explicit discard logging
-- Core scalar feature extraction and curve artifacts
-- Subject-level stratified train/validation/test splitting
-- Baseline RandomForest training and feature importance export
-- FastAPI endpoint for deterministic trial-level inference
-
-### Pipeline install
-
-```bash
+# Install dependencies
 pip install -r requirements-pipeline.txt
+
+# Start API server
+uvicorn gait_pipeline.api:app --reload --port 8000
 ```
 
-### Run end-to-end pipeline
+The frontend proxies `/api/pipeline/*` to `http://localhost:8000` automatically via `next.config.ts`.
+
+### Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Optional | Supabase project URL (future DB) |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Optional | Supabase anonymous key |
+| `GAIT_PIPELINE_API_URL` | Optional | Python backend URL (default: `localhost:8000`) |
+| `OPENAI_API_KEY` | Optional | For AI Navigator feature |
+
+## Project Structure
+
+```
+pedi-growth/
+├── src/
+│   ├── app/              # Next.js pages (landing, start, capture, analyzing, results, concern)
+│   ├── components/       # UI components (shadcn/ui + custom)
+│   ├── lib/
+│   │   ├── analysis/     # Client-side gait analysis (angles, cycles, features)
+│   │   ├── api/          # Backend API client
+│   │   ├── copilot/      # AI navigator system prompt
+│   │   ├── db/           # Supabase client (future)
+│   │   ├── export/       # PDF report export
+│   │   ├── policy/       # Clinical policy (routing, thresholds, language safety)
+│   │   ├── pose/         # MediaPipe pose integration
+│   │   ├── quality/      # Video quality assessment
+│   │   ├── scoring/      # Concern level computation
+│   │   ├── session/      # Analysis pipeline orchestrator + video/result storage
+│   │   ├── trace/        # Analysis audit trail
+│   │   └── types/        # TypeScript type definitions
+├── gait_pipeline/        # Python backend
+│   ├── api.py            # FastAPI endpoints
+│   ├── gait_inference.py # XGBoost inference engine
+│   ├── pipeline.py       # Batch processing pipeline
+│   ├── config.py         # Pipeline configuration
+│   ├── model.py          # Legacy RandomForest baseline
+│   └── models/           # Trained XGBoost model files
+├── scripts/
+│   ├── data_prep/        # Data preparation scripts
+│   └── train_xgboost.py  # Model training pipeline
+├── data/
+│   ├── training_reports/ # Model performance reports
+│   └── manifest.csv      # Dataset manifest
+├── tests/                # Test suite (node:test)
+├── docs/                 # Documentation (PRD, clinical context)
+└── supabase/             # Database migrations (future)
+```
+
+## Test Suite
 
 ```bash
-PYTHONPATH=. python scripts/run_pipeline.py --config gait_pipeline/pipeline_config.yaml
+# Run all tests
+node --test tests/
+
+# Run specific test
+node --test tests/routing-rules.test.mjs
 ```
 
-### Synthetic verification run
+## ML Pipeline
 
-```bash
-python scripts/verify_pipeline_synthetic.py
-```
+The XGBoost models provide screening-level risk predictions for:
 
-### Strict readiness audit
+- **Gait Asymmetry** — Left/right movement pattern differences
+- **Trendelenburg Risk** — Hip drop indicators
+- **Trunk Instability** — Upper body stability during walking
+- **Spinal Misalignment** — Shoulder-pelvic divergence patterns
+- **Composite Risk** — Overall screening score
 
-```bash
-PYTHONPATH=. python scripts/validate_quality_gates.py \
-  --features outputs/hsil_demo/scalar_features.parquet \
-  --manifest data/manifest.csv \
-  --output outputs/hsil_demo/quality_gates_report.json
-```
+> See `data/training_reports/model_evaluation.md` for an honest assessment of model limitations.
 
-### Serve API locally
+## Clinical Safety
 
-```bash
-PYTHONPATH=. python scripts/run_api.py \
-  --config gait_pipeline/pipeline_config.yaml \
-  --host 0.0.0.0 \
-  --port 8000
-```
+- All outputs use "observed/may/noticed" language — never diagnostic terms
+- Language safety filter blocks prohibited medical terminology
+- Strict routing rules based on age and ambulatory status
+- Global disclaimer footer on every page
+- Non-diagnostic screening levels: none → mild → moderate → significant
 
-## Project docs
+## License
 
-- [Product requirements](docs/PRD.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Data model](docs/DATA_MODEL.md)
-- [Policy rules](docs/POLICY_RULES.md)
-- [AI navigator spec](docs/AI_NAVIGATOR_SPEC.md)
-- [Safety limitations](docs/SAFETY_AND_LIMITATIONS.md)
-- [QA protocol](docs/QA_PROTOCOL.md)
-
-## Safety commitment
-
-All outputs are for screening support and care navigation, not diagnosis.
+Private — Hackathon submission

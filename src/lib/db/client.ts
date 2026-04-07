@@ -1,4 +1,4 @@
-// GAITBRIDGE — Supabase Client (Browser)
+// PEDI-GROWTH — Supabase Client (Browser)
 // Use this in client components and browser context.
 
 import { createBrowserClient } from "@supabase/ssr";

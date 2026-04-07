@@ -1,4 +1,4 @@
-// GAITBRIDGE — Gait Feature Extraction Engine (Frontal-First)
+// PEDI-GROWTH — Gait Feature Extraction Engine (Frontal-First)
 // Computes real gait metrics from landmark sequences.
 // MVP: frontal/toward-away video is the PRIMARY supported mode.
 // Sagittal metrics are computed but gated behind _sagittal_ prefix.

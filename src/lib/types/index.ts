@@ -1,4 +1,4 @@
-// GAITBRIDGE — Domain Types
+// PEDI-GROWTH — Domain Types
 // Central type definitions for the entire application.
 // All modules import from here. No ad-hoc types elsewhere.
 

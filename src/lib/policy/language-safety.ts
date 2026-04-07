@@ -1,4 +1,4 @@
-// GAITBRIDGE — Language Safety Policy
+// PEDI-GROWTH — Language Safety Policy
 // Filters prohibited language from all outputs (reports, AI responses, UI text).
 // Pure function. No side effects.
 

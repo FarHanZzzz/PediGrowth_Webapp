@@ -1,4 +1,4 @@
-// GAITBRIDGE — L/R Swap Correction (Annotation Quality Recovery)
+// PEDI-GROWTH — L/R Swap Correction (Annotation Quality Recovery)
 //
 // MediaPipe can swap left/right landmarks frame-to-frame, especially
 // on frontal toward/away video when arms cross or the body rotates.

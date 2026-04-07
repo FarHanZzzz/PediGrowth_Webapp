@@ -1,4 +1,4 @@
-// GAITBRIDGE — Analysis Session Orchestrator (Evidence-First)
+// PEDI-GROWTH — Analysis Session Orchestrator (Evidence-First)
 //
 // DESIGN PRINCIPLES:
 // 1. NEVER refuse analysis for merely imperfect home videos (graceful degradation)
@@ -297,7 +297,7 @@ export async function runAnalysisPipeline(
         const smoothedFrames = smoothLandmarks(rawFrames, 0.3);
         const { frames: correctedFrames, swapCount } = correctLRSwaps(smoothedFrames);
         if (swapCount > 0) {
-          console.log(`[GaitBridge] Corrected ${swapCount} L/R swap(s)`);
+          console.log(`[Pedi-Growth] Corrected ${swapCount} L/R swap(s)`);
         }
         const features = extractGaitFeatures(correctedFrames, assessment.cameraAngle);
         report(4, 1);

@@ -1,4 +1,4 @@
-# GAITBRIDGE — Policy Engine Specification
+# Pedi-Growth — Policy Engine Specification
 
 **Version:** 0.2.0 | **Date:** 2026-04-07 | **ADR:** ADR-001, ADR-006
 

@@ -19,7 +19,7 @@ from hero_overlay_lib import (
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Render a clean annotated GAITBRIDGE hero export.")
+    parser = argparse.ArgumentParser(description="Render a clean annotated Pedi-Growth hero export.")
     parser.add_argument("--video", required=True, help="Source video path")
     parser.add_argument("--trace", required=True, help="Analysis trace JSON path")
     parser.add_argument("--output", required=True, help="Output MP4 path")
@@ -35,7 +35,7 @@ def main():
     video_meta = ffprobe_video(video_path)
     trace = load_trace(trace_path)
 
-    with tempfile.TemporaryDirectory(prefix="gaitbridge-export-") as temp_dir:
+    with tempfile.TemporaryDirectory(prefix="Pedi-Growth-export-") as temp_dir:
         raw_dir = ensure_clean_dir(Path(temp_dir) / "raw")
         rendered_dir = ensure_clean_dir(Path(temp_dir) / "rendered")
 

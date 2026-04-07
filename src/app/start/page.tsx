@@ -13,6 +13,7 @@ import {
   Card,
   CardContent,
 } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -45,7 +46,7 @@ function readSavedSession(): {
     };
   }
 
-  const raw = sessionStorage.getItem("gaitbridge_session");
+  const raw = sessionStorage.getItem("pedigrowth_session");
   if (!raw) {
     return {
       consent: false,
@@ -104,7 +105,7 @@ export default function QuickGatePage() {
     });
 
     // Store minimal session data
-    sessionStorage.setItem("gaitbridge_session", JSON.stringify({
+    sessionStorage.setItem("pedigrowth_session", JSON.stringify({
       nickname: nickname.trim() || "your child",
       ageMonths: age,
       walking,
@@ -123,20 +124,27 @@ export default function QuickGatePage() {
   }
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-gradient-to-b from-background to-muted/30 px-4 py-8 sm:px-6">
-      <div className="mx-auto w-full max-w-md">
-        {/* Header — minimal */}
-        <div className="mb-6 text-center">
-          <h1 className="text-xl font-bold text-foreground sm:text-2xl">
-            Quick Start
+    <div className="px-4 py-6 sm:px-6">
+      <div className="mx-auto grid max-w-5xl gap-5 lg:grid-cols-[0.8fr_1.2fr]">
+        <aside className="clinical-layer rounded-[1.8rem] p-6 sm:p-7">
+          <Badge variant="secondary" className="mb-4 gap-1.5">
+            <ShieldCheck className="h-3.5 w-3.5" />
+            Intake Gate
+          </Badge>
+          <h1 data-display="true" className="text-3xl font-semibold leading-tight sm:text-4xl">
+            Start a calm, structured assessment.
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Just a few details, then we&apos;ll guide you to record.
+          <p className="mt-3 text-sm text-muted-foreground sm:text-base">
+            Answer three essentials so we route your child to the right experience: concern navigator or full gait analysis.
           </p>
-        </div>
+          <div className="mt-6 space-y-3 text-sm text-foreground/80">
+            <p className="rounded-2xl bg-surface-container-lowest p-3">Age and walking status determine a safe route.</p>
+            <p className="rounded-2xl bg-surface-container-lowest p-3">No diagnosis language, always clinician-safe framing.</p>
+          </div>
+        </aside>
 
-        <Card>
-          <CardContent className="space-y-5 p-5">
+        <Card className="rounded-[1.8rem]">
+          <CardContent className="space-y-6 p-6 sm:p-7">
             {/* Nickname — optional */}
             <div className="space-y-1.5">
               <Label htmlFor="nickname" className="text-sm">
@@ -180,18 +188,18 @@ export default function QuickGatePage() {
               </Label>
               <div className="grid grid-cols-3 gap-2">
                 {([
-                  { value: "yes" as const, label: "Yes", color: "border-concern-none/50 bg-concern-none/5" },
-                  { value: "no" as const, label: "No", color: "border-concern-moderate/50 bg-concern-moderate/5" },
-                  { value: "not_sure" as const, label: "Not sure", color: "border-border bg-muted/30" },
+                  { value: "yes" as const, label: "Yes", color: "bg-secondary-container text-secondary-foreground" },
+                  { value: "no" as const, label: "No", color: "bg-error-container text-on-error-container" },
+                  { value: "not_sure" as const, label: "Not sure", color: "bg-surface-container-low text-foreground" },
                 ]).map((option) => (
                   <button
                     key={option.value}
                     type="button"
                     onClick={() => setWalking(option.value)}
-                    className={`touch-target flex items-center justify-center rounded-lg border-2 p-3 text-sm font-medium transition-all ${
+                    className={`touch-target flex items-center justify-center rounded-2xl border border-transparent p-3 text-sm font-medium transition-all ${
                       walking === option.value
-                        ? `${option.color} ring-2 ring-primary/30`
-                        : "border-border bg-card hover:bg-muted/50"
+                        ? `${option.color} shadow-[0_12px_32px_rgba(21,29,28,0.06)]`
+                        : "bg-surface-container-low hover:bg-surface-variant"
                     }`}
                   >
                     {option.label}
@@ -201,7 +209,7 @@ export default function QuickGatePage() {
             </div>
 
             {/* Consent — compact */}
-            <div className="flex items-start gap-3 rounded-lg bg-muted/40 p-3">
+            <div className="flex items-start gap-3 rounded-2xl bg-surface-container-low p-4">
               <Checkbox
                 id="consent"
                 checked={consent}
@@ -209,7 +217,7 @@ export default function QuickGatePage() {
                 className="mt-0.5"
               />
               <Label htmlFor="consent" className="text-xs leading-relaxed cursor-pointer text-muted-foreground">
-                I understand GAITBRIDGE is a support tool that does not diagnose conditions.
+                I understand Pedi-Growth is a support tool that does not diagnose conditions.
                 Video is processed on my device and not stored unless I choose to save.
               </Label>
             </div>
@@ -236,15 +244,16 @@ export default function QuickGatePage() {
           </CardContent>
         </Card>
 
-        {/* How-it-works micro-summary */}
-        <div className="mt-4 flex items-center justify-center gap-4 text-[11px] text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <ShieldCheck className="h-3 w-3" /> Not diagnostic
-          </span>
-          <span>·</span>
-          <span className="flex items-center gap-1">
-            <Heart className="h-3 w-3" /> Privacy-first
-          </span>
+        <div className="lg:col-span-2">
+          <div className="flex items-center justify-center gap-4 rounded-2xl bg-surface-container-low px-4 py-3 text-[11px] text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <ShieldCheck className="h-3 w-3" /> Not diagnostic
+            </span>
+            <span>·</span>
+            <span className="flex items-center gap-1">
+              <Heart className="h-3 w-3" /> Privacy-first
+            </span>
+          </div>
         </div>
       </div>
     </div>

@@ -1,6 +1,6 @@
 "use client";
 
-// GAITBRIDGE — Analysis Trace Panel
+// PEDI-GROWTH — Analysis Trace Panel
 // "How it was detected" — pipeline stages, frame stats, metric evidence.
 
 import { useState } from "react";

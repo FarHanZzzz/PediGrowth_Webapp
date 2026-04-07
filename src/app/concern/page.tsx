@@ -34,7 +34,7 @@ export default function ConcernPage() {
   const [childName] = useState(() => {
     if (typeof window === "undefined") return "your child";
     try {
-      const raw = sessionStorage.getItem("gaitbridge_session");
+      const raw = sessionStorage.getItem("pedigrowth_session");
       if (!raw) return "your child";
       const session = JSON.parse(raw);
       return session.nickname || "your child";
@@ -45,7 +45,7 @@ export default function ConcernPage() {
   const [flags, setFlags] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    const raw = sessionStorage.getItem("gaitbridge_session");
+    const raw = sessionStorage.getItem("pedigrowth_session");
     if (!raw) {
       router.replace("/start");
     }
@@ -55,14 +55,14 @@ export default function ConcernPage() {
   const urgentCount = RED_FLAGS.filter((rf) => rf.urgent && flags[rf.id]).length;
 
   return (
-    <div className="min-h-dvh bg-gradient-to-b from-background to-muted/30 px-4 py-6 sm:px-6">
-      <div className="mx-auto max-w-lg">
+    <div className="px-4 py-6 sm:px-6">
+      <div className="mx-auto max-w-3xl">
         {/* Header */}
-        <div className="mb-4 text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-route-a/10">
+        <div className="clinical-layer mb-5 rounded-[1.8rem] px-6 py-7 text-center">
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-surface-container-lowest">
             <Heart className="h-6 w-6 text-route-a" />
           </div>
-          <h1 className="text-xl font-bold text-foreground">
+          <h1 data-display="true" className="text-3xl font-semibold text-foreground">
             Concern Navigator
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -72,7 +72,7 @@ export default function ConcernPage() {
         </div>
 
         {/* Why no gait analysis */}
-        <Card className="mb-4 bg-muted/30">
+        <Card className="mb-4 bg-surface-container-low">
           <CardContent className="p-4 text-xs text-muted-foreground">
             <p>
               Gait analysis requires independent walking. When {childName}{" "}
@@ -91,7 +91,7 @@ export default function ConcernPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {RED_FLAGS.map((rf) => (
-              <div key={rf.id} className="flex items-start gap-3">
+              <div key={rf.id} className="flex items-start gap-3 rounded-2xl bg-surface-container-low p-3">
                 <Checkbox
                   id={rf.id}
                   checked={flags[rf.id] || false}
@@ -103,7 +103,7 @@ export default function ConcernPage() {
                     {rf.label}
                   </Label>
                   {rf.urgent && (
-                    <Badge variant="outline" className="ml-1.5 text-[9px] border-concern-significant/30 text-concern-significant">
+                    <Badge variant="destructive" className="ml-1.5 text-[9px]">
                       Priority
                     </Badge>
                   )}
@@ -115,7 +115,7 @@ export default function ConcernPage() {
 
         {/* Results */}
         {flaggedCount > 0 && (
-          <Card className="mb-4 border-concern-moderate/30 bg-concern-moderate/5">
+          <Card className="mb-4 bg-tertiary-fixed/30">
             <CardContent className="p-4 text-xs">
               <p className="font-medium text-foreground mb-1">
                 {flaggedCount} observation(s) noted{urgentCount > 0 ? `, including ${urgentCount} priority item(s)` : ""}
@@ -129,7 +129,7 @@ export default function ConcernPage() {
         )}
 
         {/* Guidance */}
-        <Card className="mb-4 bg-primary/5">
+        <Card className="mb-4 bg-surface-container-low">
           <CardContent className="p-4 space-y-2 text-xs text-foreground/80">
             <p className="font-semibold text-foreground">Suggested next steps:</p>
             <p>• Share your observations with your child&apos;s pediatrician</p>
@@ -140,8 +140,8 @@ export default function ConcernPage() {
         </Card>
 
         {/* Non-diagnostic reminder */}
-        <div className="mb-4 rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground text-center">
-          GAITBRIDGE supports concern documentation — it does not diagnose conditions.
+        <div className="mb-4 rounded-2xl bg-surface-container-low p-3 text-xs text-muted-foreground text-center">
+          Pedi-Growth supports concern documentation — it does not diagnose conditions.
         </div>
 
         {/* Actions */}
@@ -157,7 +157,7 @@ export default function ConcernPage() {
             </Button>
           )}
           <Button
-            variant="outline"
+            variant="secondary"
             className="w-full text-sm font-medium"
             onClick={() => router.push("/start")}
           >

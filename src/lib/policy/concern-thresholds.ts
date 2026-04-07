@@ -1,4 +1,4 @@
-// GAITBRIDGE — Concern Thresholds Policy (Frontal-First)
+// PEDI-GROWTH — Concern Thresholds Policy (Frontal-First)
 // Maps gait features to concern domains with follow-up priority.
 // MVP: only frontal-valid concern domains are active.
 

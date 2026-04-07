@@ -1,4 +1,4 @@
-// GAITBRIDGE — Analysis Trace Types
+// PEDI-GROWTH — Analysis Trace Types
 // Single source of truth for the evidence chain.
 // Consumed by: AnnotatedVideoPlayer, AnalysisTracePanel, KeyFrameGallery,
 //              ConcernEvidenceCard, OverlayRenderer, export pipeline.

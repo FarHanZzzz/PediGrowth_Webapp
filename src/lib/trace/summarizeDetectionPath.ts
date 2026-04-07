@@ -1,4 +1,4 @@
-// GAITBRIDGE — Detection Path Summarizer
+// PEDI-GROWTH — Detection Path Summarizer
 // Generates human-readable explanations for each concern card.
 // Answers: what signal, which frames, what confidence, what was missing.
 

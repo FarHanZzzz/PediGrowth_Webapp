@@ -6,6 +6,7 @@ import { Activity, CheckCircle2, Loader2, AlertTriangle, RefreshCw } from "lucid
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { runAnalysisPipeline } from "@/lib/session/analysisSession";
+import { saveResult } from "@/lib/session/videoStore";
 import type { PipelineProgress } from "@/lib/session/analysisSession";
 
 const STAGE_LABELS = [
@@ -23,13 +24,14 @@ export default function AnalyzingPage() {
   const [currentStage, setCurrentStage] = useState(0);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [analysisAttempt, setAnalysisAttempt] = useState(0);
   const pipelineRan = useRef(false);
 
   useEffect(() => {
     if (pipelineRan.current) return;
     pipelineRan.current = true;
 
-    const raw = sessionStorage.getItem("gaitbridge_session");
+    const raw = sessionStorage.getItem("pedigrowth_session");
     if (!raw) {
       router.replace("/start");
       return;
@@ -66,9 +68,10 @@ export default function AnalyzingPage() {
       },
     )
       .then((result) => {
-        // Store result in sessionStorage
+        // Store result in sessionStorage + IndexedDB for persistence
         const resultId = result.id;
-        sessionStorage.setItem(`gaitbridge_result_${resultId}`, JSON.stringify(result));
+        sessionStorage.setItem(`pedigrowth_result_${resultId}`, JSON.stringify(result));
+        saveResult(resultId, result).catch(() => {}); // fire-and-forget
 
         // Complete progress
         setCurrentStage(STAGE_LABELS.length);
@@ -86,16 +89,27 @@ export default function AnalyzingPage() {
           "You can try again or use a different browser."
         );
       });
-  }, [router]);
+
+    // P1-07: Timeout after 120 seconds
+    const timeout = setTimeout(() => {
+      setError((existing) =>
+        existing ??
+        "Analysis is taking longer than expected. This may be due to video length or device performance. " +
+          "Please try with a shorter video or on a different device."
+      );
+    }, 120_000);
+
+    return () => clearTimeout(timeout);
+  }, [router, analysisAttempt]);
 
   if (error) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-gradient-to-b from-background to-muted/30 px-4">
-        <div className="mx-auto w-full max-w-sm text-center">
-          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-destructive/10">
+      <div className="px-4 py-10 sm:px-6">
+        <div className="mx-auto w-full max-w-md rounded-[1.8rem] bg-error-container/65 p-7 text-center shadow-[0_12px_32px_rgba(21,29,28,0.06)]">
+          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-error-container">
             <AlertTriangle className="h-8 w-8 text-destructive" />
           </div>
-          <h1 className="text-xl font-bold text-foreground">Analysis Error</h1>
+          <h1 data-display="true" className="text-2xl font-semibold text-foreground">Analysis Error</h1>
           <p className="mt-2 mb-6 text-sm text-muted-foreground">{error}</p>
           <div className="space-y-3">
             <Button
@@ -104,6 +118,7 @@ export default function AnalyzingPage() {
                 pipelineRan.current = false;
                 setCurrentStage(0);
                 setProgress(0);
+                setAnalysisAttempt((value) => value + 1);
               }}
               size="lg"
               className="w-full gap-2"
@@ -112,7 +127,7 @@ export default function AnalyzingPage() {
               Try Again
             </Button>
             <Button
-              variant="outline"
+              variant="secondary"
               onClick={() => router.push("/capture")}
               size="lg"
               className="w-full"
@@ -126,14 +141,14 @@ export default function AnalyzingPage() {
   }
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-gradient-to-b from-background to-muted/30 px-4">
-      <div className="mx-auto w-full max-w-sm text-center">
+    <div className="px-4 py-8 sm:px-6">
+      <div className="mx-auto w-full max-w-lg rounded-[2rem] bg-surface-container-low p-7 text-center">
         {/* Animated icon */}
-        <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
+        <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-surface-container-lowest shadow-[0_12px_32px_rgba(21,29,28,0.06)]">
           <Activity className="h-8 w-8 text-primary animate-pulse" />
         </div>
 
-        <h1 className="text-xl font-bold text-foreground">Analyzing</h1>
+        <h1 data-display="true" className="text-3xl font-semibold text-foreground">Analyzing</h1>
         <p className="mt-2 mb-6 text-sm text-muted-foreground">
           Processing your video with AI pose detection
         </p>
@@ -142,7 +157,7 @@ export default function AnalyzingPage() {
         <Progress value={progress} className="mb-4" />
 
         {/* Stages */}
-        <div className="space-y-2">
+        <div className="clinical-card mt-4 space-y-2 rounded-[1.4rem] p-4 text-left">
           {STAGE_LABELS.map((label, i) => (
             <div
               key={label}
@@ -159,7 +174,7 @@ export default function AnalyzingPage() {
               ) : i === currentStage ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
-                <div className="h-3.5 w-3.5 rounded-full border border-border" />
+                <div className="h-3.5 w-3.5 rounded-full bg-outline-variant/35" />
               )}
               {label}
             </div>
@@ -169,6 +184,9 @@ export default function AnalyzingPage() {
         <p className="mt-6 text-[10px] text-muted-foreground/50">
           Video is processed locally on your device
         </p>
+
+        {/* P1-07: Cancel button */}
+        <Button variant="ghost" size="sm" className="mt-4 text-xs" onClick={() => router.push("/capture")}>Cancel</Button>
       </div>
     </div>
   );

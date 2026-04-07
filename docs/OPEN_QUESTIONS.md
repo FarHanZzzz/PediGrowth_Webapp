@@ -1,4 +1,4 @@
-# GAITBRIDGE — Open Questions (Resolved)
+# Pedi-Growth — Open Questions (Resolved)
 
 **Date:** 2026-04-07 | **Status:** All questions resolved
 

@@ -1,4 +1,4 @@
-// GAITBRIDGE — Canvas Overlay Renderer (v2 — Annotation Quality Recovery)
+// PEDI-GROWTH — Canvas Overlay Renderer (v2 — Annotation Quality Recovery)
 //
 // Pure 2D canvas drawing functions for annotation overlays.
 // No component logic — just draw functions that take a canvas context + trace data.

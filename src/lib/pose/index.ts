@@ -1,4 +1,4 @@
-// GAITBRIDGE — Pose Provider Abstraction
+// PEDI-GROWTH — Pose Provider Abstraction
 // Interface and factory for swappable pose estimation backends.
 
 import type { PoseProvider, LandmarkFrame } from '@/lib/types';
