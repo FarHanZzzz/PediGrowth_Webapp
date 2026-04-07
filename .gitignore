@@ -5,4 +5,5 @@ outputs/
 
 # Large data directories
 dataset/
-data/
+data/*
+!data/manifest.csv

@@ -1,0 +1,4 @@
+trial_path,trial_format,source_joint_set,subject_id,age_months,condition,severity,sampling_rate,height_cm,weight_kg,video_path
+data/diplegia/trial_001.npy,npy,marker33,S001,84,CP,2,120,128,28,
+data/healthgait/video_045.mp4,video,coco17,S045,96,TD,0,30,135,32,data/healthgait/video_045.mp4
+data/typical_dev/gait_012.csv,csv,coco17,S012,108,TD,0,60,142,35,
