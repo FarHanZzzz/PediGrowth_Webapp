@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
+from sklearn.dummy import DummyClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report
 
@@ -74,7 +75,7 @@ def resolve_feature_columns(requested_scalar_metrics: Optional[List[str]]) -> Li
 
 @dataclass
 class TrainArtifacts:
-    model: RandomForestClassifier
+    model: object
     report_val: Dict[str, Dict[str, float]]
     report_test: Dict[str, Dict[str, float]]
     feature_importance: pd.DataFrame
@@ -96,6 +97,20 @@ def _prepare_matrix(df: pd.DataFrame, feature_columns: List[str]) -> np.ndarray:
     x = x.replace([np.inf, -np.inf], np.nan)
     x = x.fillna(x.median(numeric_only=True))
     return x.to_numpy(dtype=float)
+
+
+def _safe_classification_report(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, Dict[str, float]]:
+    if len(y_true) == 0:
+        return {
+            "accuracy": 0.0,
+            "weighted avg": {
+                "precision": 0.0,
+                "recall": 0.0,
+                "f1-score": 0.0,
+                "support": 0.0,
+            },
+        }
+    return classification_report(y_true, y_pred, output_dict=True, zero_division=0)
 
 
 def train_baseline_random_forest(
@@ -133,26 +148,34 @@ def train_baseline_random_forest(
             # Fall back to deterministic class-weighting when SMOTE is unavailable.
             pass
 
-    clf = RandomForestClassifier(
-        n_estimators=300,
-        max_depth=None,
-        min_samples_leaf=2,
-        random_state=random_state,
-        n_jobs=1,
-        class_weight=class_weight,
-    )
+    if np.unique(y_train).size < 2:
+        clf = DummyClassifier(strategy="most_frequent")
+    else:
+        clf = RandomForestClassifier(
+            n_estimators=300,
+            max_depth=None,
+            min_samples_leaf=2,
+            random_state=random_state,
+            n_jobs=1,
+            class_weight=class_weight,
+        )
     clf.fit(x_train, y_train)
 
-    y_val_pred = clf.predict(x_val)
-    y_test_pred = clf.predict(x_test)
+    y_val_pred = clf.predict(x_val) if len(y_val) else np.array([], dtype=int)
+    y_test_pred = clf.predict(x_test) if len(y_test) else np.array([], dtype=int)
 
-    report_val = classification_report(y_val, y_val_pred, output_dict=True, zero_division=0)
-    report_test = classification_report(y_test, y_test_pred, output_dict=True, zero_division=0)
+    report_val = _safe_classification_report(y_val, y_val_pred)
+    report_test = _safe_classification_report(y_test, y_test_pred)
+
+    if hasattr(clf, "feature_importances_"):
+        importances = np.asarray(clf.feature_importances_, dtype=float)
+    else:
+        importances = np.zeros(len(selected_columns), dtype=float)
 
     importance = pd.DataFrame(
         {
             "feature": selected_columns,
-            "importance": clf.feature_importances_,
+            "importance": importances,
         }
     ).sort_values("importance", ascending=False)
 
