@@ -33,5 +33,16 @@ pnpm-debug.log*
 # coverage
 coverage/
 
+# Python artifacts
+.venv/
+__pycache__/
+*.pyc
+outputs/
+
+# Large data directories
+dataset/
+data/*
+!data/manifest.csv
+
 # OS files
 .DS_Store

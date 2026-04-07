@@ -1,153 +1,98 @@
-# GAITBRIDGE
+# GAITBRIDGE (Pedi-Growth)
 
-**Pediatric Gait Concern Analysis, Monitoring, and Care Navigation Platform**
+Pediatric gait concern analysis platform with a Next.js application layer and
+a deterministic Python gait-processing pipeline for reproducible experiments.
 
-> Turn ordinary smartphone videos into structured, explainable gait concern summaries and clinician-ready packets.
+## Web Application (Next.js)
 
----
+### What GAITBRIDGE is
 
-## What GAITBRIDGE Is
-
-- A structured gait concern documentation tool
-- A triage and monitoring support system
+- A structured gait concern documentation workflow
+- A triage/monitoring support layer
 - A caregiver education and navigation layer
-- A longitudinal change-tracking platform
 - A clinician handoff/reporting workflow
 
-## What GAITBRIDGE Is NOT
+### What GAITBRIDGE is not
 
-- ❌ A diagnostic tool
-- ❌ A disease-probability engine
-- ❌ A neurological disorder classifier
-- ❌ A substitute for professional evaluation
+- A diagnostic tool
+- A disease-probability engine
+- A substitute for clinical evaluation
 
----
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Framework | Next.js 14+ (App Router) |
-| Language | TypeScript (strict) |
-| Styling | Tailwind CSS |
-| Components | shadcn/ui |
-| Database | Supabase (PostgreSQL + RLS) |
-| Hosting | Vercel |
-| Pose Engine | MediaPipe Pose Landmarker (WASM) |
-| PDF | @react-pdf/renderer |
-| AI Navigator | OpenAI-compatible API (bounded) |
-
----
-
-## Quick Start
+### Web app quick start
 
 ```bash
-# Install dependencies
 npm install
-
-# Set up environment variables
 cp .env.example .env.local
-
-# Run development server
 npm run dev
+```
 
-# Run tests
+### Web app verification
+
+```bash
+npm run lint
+npm run type-check
 npm run test
-
-# Run policy tests
-npm run test:policy
+npm run build
 ```
 
----
+## Deterministic Gait Pipeline (Python)
 
-## Project Structure
+The repository also includes a deterministic preprocessing and baseline
+modeling stack under `gait_pipeline/` with:
 
-```
-src/
-├── app/                    # Next.js App Router pages
-│   ├── api/               # API routes (PDF, navigator, share, audit)
-│   ├── (auth)/            # Auth pages
-│   ├── consent/           # Consent flow
-│   ├── intake/            # Child intake
-│   ├── capture/           # Video capture/upload
-│   ├── results/           # Caregiver + clinician results
-│   ├── timeline/          # Longitudinal view
-│   ├── navigator/         # AI navigator
-│   └── share/             # Share/export
-├── components/            # UI components
-│   ├── ui/               # shadcn/ui base components
-│   ├── intake/           # Intake form components
-│   ├── capture/          # Capture UI components
-│   ├── results/          # Results display components
-│   ├── timeline/         # Timeline components
-│   └── navigator/        # Chat components
-├── lib/
-│   ├── types/            # Domain types (single source of truth)
-│   ├── policy/           # Policy engine (pure functions)
-│   ├── pose/             # Pose extraction abstraction
-│   ├── analysis/         # Gait feature engine
-│   ├── quality/          # Video quality assessment
-│   ├── scoring/          # Concern engine
-│   ├── reports/          # Report generation
-│   ├── copilot/          # AI navigator logic
-│   ├── db/               # Database client
-│   ├── security/         # Encryption, share links
-│   └── utils/            # Shared utilities
-docs/                      # Documentation
-├── PRD.md
-├── ARCHITECTURE.md
-├── DATA_MODEL.md
-├── POLICY_RULES.md
-├── AI_NAVIGATOR_SPEC.md
-├── SAFETY_AND_LIMITATIONS.md
-├── QA_PROTOCOL.md
-├── TEAM_COLLABORATION.md
-├── AUDIT_FRAMEWORK.md
-├── DELIVERY_PHASES.md
-├── DEMO_RUNBOOK.md
-└── OPEN_QUESTIONS.md
-tests/
-├── unit/
-├── policy/
-├── integration/
-├── e2e/
-├── demo/
-└── fixtures/
+- Unified trial schema across CSV/NPY/JSON inputs
+- Cleaning + quality gates with explicit discard logging
+- Core scalar feature extraction and curve artifacts
+- Subject-level stratified train/validation/test splitting
+- Baseline RandomForest training and feature importance export
+- FastAPI endpoint for deterministic trial-level inference
+
+### Pipeline install
+
+```bash
+pip install -r requirements-pipeline.txt
 ```
 
----
+### Run end-to-end pipeline
 
-## Documentation
+```bash
+PYTHONPATH=. python scripts/run_pipeline.py --config gait_pipeline/pipeline_config.yaml
+```
 
-| Document | Purpose |
-|----------|---------|
-| [PRD](docs/PRD.md) | Product requirements, features, scope |
-| [Architecture](docs/ARCHITECTURE.md) | System design, modules, data flow |
-| [Data Model](docs/DATA_MODEL.md) | Database schema, entities, relationships |
-| [Policy Rules](docs/POLICY_RULES.md) | Policy engine specification |
-| [AI Navigator](docs/AI_NAVIGATOR_SPEC.md) | AI copilot specification |
-| [Safety](docs/SAFETY_AND_LIMITATIONS.md) | Privacy, consent, disclaimers |
-| [QA Protocol](docs/QA_PROTOCOL.md) | Test strategy and requirements |
-| [Team Collaboration](docs/TEAM_COLLABORATION.md) | Roles, workflows, governance |
-| [Audit Framework](docs/AUDIT_FRAMEWORK.md) | Logging and audit specification |
-| [Delivery Phases](docs/DELIVERY_PHASES.md) | Phased implementation plan |
-| [Demo Runbook](docs/DEMO_RUNBOOK.md) | Demo scripts and fallback plans |
-| [Open Questions](docs/OPEN_QUESTIONS.md) | Unresolved decisions |
+### Synthetic verification run
 
----
+```bash
+python scripts/verify_pipeline_synthetic.py
+```
 
-## Safety Commitment
+### Strict readiness audit
 
-Every output of GAITBRIDGE reinforces **support, not diagnosis**. The platform:
-- Never claims to diagnose conditions
-- Never provides disease probabilities
-- Never recommends treatments
-- Always defers to professional clinical evaluation
-- Always displays confidence scores and limitations
-- Rejects low-quality video rather than producing unreliable analysis
+```bash
+PYTHONPATH=. python scripts/validate_quality_gates.py \
+  --features outputs/hsil_demo/scalar_features.parquet \
+  --manifest data/manifest.csv \
+  --output outputs/hsil_demo/quality_gates_report.json
+```
 
----
+### Serve API locally
 
-## License
+```bash
+PYTHONPATH=. python scripts/run_api.py \
+  --config gait_pipeline/pipeline_config.yaml \
+  --host 0.0.0.0 \
+  --port 8000
+```
 
-Proprietary — All rights reserved.
+## Project docs
+
+- [Product requirements](docs/PRD.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Data model](docs/DATA_MODEL.md)
+- [Policy rules](docs/POLICY_RULES.md)
+- [AI navigator spec](docs/AI_NAVIGATOR_SPEC.md)
+- [Safety limitations](docs/SAFETY_AND_LIMITATIONS.md)
+- [QA protocol](docs/QA_PROTOCOL.md)
+
+## Safety commitment
+
+All outputs are for screening support and care navigation, not diagnosis.
