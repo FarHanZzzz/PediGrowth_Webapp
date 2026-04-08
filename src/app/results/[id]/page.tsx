@@ -6,19 +6,10 @@ import {
   AlertTriangle,
   ArrowLeft,
   BarChart3,
-  Check,
-  Clipboard,
-  Copy,
   Camera,
   Download,
-  Link2,
-  FileText,
   Info,
-  MessageCircle,
-  Microscope,
   PlayCircle,
-  Printer,
-  RefreshCw,
   Video,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -26,27 +17,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import AnnotatedVideoPlayer from "@/components/results/AnnotatedVideoPlayer";
 import { getResult } from "@/lib/session/videoStore";
-import AnalysisTracePanel from "@/components/results/AnalysisTracePanel";
-import KeyFrameGallery from "@/components/results/KeyFrameGallery";
-import EventTimeline from "@/components/results/EventTimeline";
-import HowAnalysisWorksPanel from "@/components/results/HowAnalysisWorksPanel";
-import ClinicalReferencesPanel from "@/components/results/ClinicalReferencesPanel";
-import QualityCoachPanel from "@/components/results/QualityCoachPanel";
 import RunProvenanceBadge from "@/components/results/RunProvenanceBadge";
 import { exportReportAsPDF } from "@/lib/export/generatePDF";
-import { buildKeyFrames } from "@/lib/trace/buildKeyFrames";
-import { summarizeDetectionPath } from "@/lib/trace/summarizeDetectionPath";
 import { buildRunProvenance } from "@/lib/session/runProvenance";
 import type { AnalysisSessionResult } from "@/lib/session/analysisSession";
 import { buildReportBundle } from "@/lib/reports";
 
-type ResultTab = "summary" | "clinician" | "video" | "evidence";
+type ResultTab = "summary" | "video";
 
 const TABS: { key: ResultTab; label: string; icon: typeof BarChart3 }[] = [
   { key: "summary", label: "Summary", icon: BarChart3 },
-  { key: "clinician", label: "Clinician Packet", icon: FileText },
   { key: "video", label: "Hero Video", icon: PlayCircle },
-  { key: "evidence", label: "Evidence", icon: Microscope },
 ];
 
 const CONCERN_BADGE_STYLES: Record<string, string> = {
@@ -94,22 +75,6 @@ function formatDomainLabel(domain: string): string {
   return domain.charAt(0).toUpperCase() + domain.slice(1).replace(/([A-Z])/g, " $1");
 }
 
-function formatFieldLabel(field: string): string {
-  return field
-    .replace(/([A-Z])/g, " $1")
-    .replace(/_/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-function formatUnknownValue(value: unknown): string {
-  if (value === null || value === undefined || value === "") return "—";
-  if (Array.isArray(value)) return value.length > 0 ? value.map((item) => String(item)).join(", ") : "none";
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
-}
-
 export default function ResultsPage() {
   const params = useParams();
   const router = useRouter();
@@ -117,15 +82,8 @@ export default function ResultsPage() {
 
   const [result, setResult] = useState<AnalysisSessionResult | null>(null);
   const [activeTab, setActiveTab] = useState<ResultTab>("summary");
-  const [detailsOpen, setDetailsOpen] = useState(false);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
-  const [jumpToFrameIndex, setJumpToFrameIndex] = useState<number | null>(null);
   const [exportAvailable, setExportAvailable] = useState(false);
-  const [copiedHandoff, setCopiedHandoff] = useState(false);
-  const [shareUrl, setShareUrl] = useState<string | null>(null);
-  const [shareExpiresAt, setShareExpiresAt] = useState<string | null>(null);
-  const [isCreatingShare, setIsCreatingShare] = useState(false);
-  const [shareError, setShareError] = useState<string | null>(null);
 
   useEffect(() => {
     // Try sessionStorage first (fast, same-session), then IndexedDB (persistent)
@@ -198,24 +156,6 @@ export default function ResultsPage() {
     };
   }, [result?.run.exportArtifactPath]);
 
-  const keyFrames = useMemo(
-    () => (result?.trace ? buildKeyFrames(result.trace) : null),
-    [result?.trace]
-  );
-
-  const concernEvidence = useMemo(
-    () =>
-      result?.trace
-        ? summarizeDetectionPath(result.trace, {
-            asymmetry: result.concerns.asymmetry,
-            irregularRhythm: result.concerns.irregularRhythm,
-            lateralInstability: result.concerns.lateralInstability,
-            pathDeviation: result.concerns.pathDeviation,
-          })
-        : [],
-    [result?.trace, result?.concerns]
-  );
-
   const reportBundle = useMemo(() => {
     if (!result) return null;
 
@@ -263,110 +203,21 @@ export default function ResultsPage() {
     };
   }, [result]);
 
-  const clinicianDerived = useMemo(() => {
-    if (!reportBundle) return null;
+  const practicalRetakeTips = useMemo(() => {
+    if (!result) return [];
 
-    const profileSummary = reportBundle.clinician.profileSummary as Record<string, unknown>;
-    const intakeContext = reportBundle.clinician.intakeContext as Record<string, unknown>;
-    const qualitySummary = reportBundle.clinician.qualitySummary as Record<string, unknown>;
-    const concernDomains = reportBundle.clinician.concernDomains as Record<string, unknown>;
-    const metricsTable = reportBundle.clinician.metricsTable as Record<string, unknown>;
+    const tips =
+      result.quality.retakeSuggestions.length > 0
+        ? result.quality.retakeSuggestions
+        : [
+            "Keep your child fully visible from head to toe in the frame.",
+            "Hold the phone steady at about waist height.",
+            "Capture 4 to 6 uninterrupted walking steps.",
+            "Use brighter lighting and avoid strong shadows.",
+          ];
 
-    const assessedDomains = Array.isArray(concernDomains.assessedDomains)
-      ? concernDomains.assessedDomains.map((domain) => String(domain))
-      : [];
-    const suppressedDomains = Array.isArray(concernDomains.suppressedDomains)
-      ? concernDomains.suppressedDomains.map((domain) => String(domain))
-      : [];
-    const metricRows = Object.entries(metricsTable);
-
-    return {
-      profileSummary,
-      intakeContext,
-      qualitySummary,
-      concernDomains,
-      assessedDomains,
-      suppressedDomains,
-      metricRows,
-    };
-  }, [reportBundle]);
-
-  function downloadClinicianPacket() {
-    if (!reportBundle) return;
-
-    const blob = new Blob([JSON.stringify(reportBundle.clinician, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `gaitbridge-clinician-packet-${resultId}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-  }
-
-  async function copyHandoffText() {
-    if (!reportBundle) return;
-    try {
-      await navigator.clipboard.writeText(reportBundle.handoffText);
-      setCopiedHandoff(true);
-      window.setTimeout(() => setCopiedHandoff(false), 1800);
-    } catch {
-      setCopiedHandoff(false);
-    }
-  }
-
-  async function createShareLink() {
-    if (!reportBundle) return;
-    setIsCreatingShare(true);
-    setShareError(null);
-
-    try {
-      const response = await fetch("/api/share/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          assessmentId: resultId,
-          payload: {
-            caregiver: reportBundle.caregiver,
-            clinician: reportBundle.clinician,
-            handoffText: reportBundle.handoffText,
-          },
-          policy: {
-            expiresHours: 72,
-            maxAccesses: 25,
-          },
-        }),
-      });
-
-      const body = (await response.json()) as {
-        shareUrl?: string;
-        expiresAt?: string;
-        error?: string;
-      };
-
-      if (!response.ok || !body.shareUrl) {
-        throw new Error(body.error ?? "Failed to create share link.");
-      }
-
-      setShareUrl(body.shareUrl);
-      setShareExpiresAt(body.expiresAt ?? null);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to create share link.";
-      setShareError(message);
-    } finally {
-      setIsCreatingShare(false);
-    }
-  }
-
-  async function copyShareUrl() {
-    if (!shareUrl) return;
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-    } catch {
-      // Clipboard permissions vary across browsers; keep the URL visible for manual copy.
-    }
-  }
+    return Array.from(new Set(tips)).slice(0, 4);
+  }, [result]);
 
   if (!result) {
     return (
@@ -392,7 +243,6 @@ export default function ResultsPage() {
   const hasTrace = Boolean(result.trace);
   const hasVideo = Boolean(videoUrl);
   const nickname = result.session.nickname;
-  const direction = result.trace?.pipeline.direction ?? "unknown";
 
   if (isValidationFailure) {
     return (
@@ -503,34 +353,37 @@ export default function ResultsPage() {
 
       <div className="mx-auto max-w-5xl space-y-5 px-4 py-6">
         <div className="text-center space-y-3">
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            <RunProvenanceBadge run={run} />
-            <Badge variant="secondary" className="text-[10px]">
-              {result.concerns.viewLabel}
-            </Badge>
-            <Badge variant="outline" className="text-[10px]">
-              {run.modelLabel}
-            </Badge>
-          </div>
-
-          <h1 data-display="true" className="text-3xl font-semibold">Results for {nickname}</h1>
-          <p className="text-sm text-muted-foreground max-w-2xl mx-auto">
-            GAITBRIDGE helps caregivers capture a usable walking video, explains what was observed in simple language, and creates a clinician-ready handoff packet for follow-up review.
+          <h1 data-display="true" className="text-3xl font-semibold">Walking Summary for {nickname}</h1>
+          <p className="mx-auto max-w-2xl text-sm text-muted-foreground">
+            A simple parent-facing summary of what this clip showed, what could not be assessed, and what to do next.
           </p>
 
-          <div className="flex flex-wrap items-center justify-center gap-2 text-[11px] text-muted-foreground">
-            <span>Source: {run.sourceClipFilename ?? "Uploaded clip"}</span>
-            <span>·</span>
-            <span>Direction: {direction}</span>
-            <span>·</span>
-            <span>Quality: {Math.round(result.quality.confidenceMultiplier * 100)}% confidence multiplier</span>
+          <div className="print-hidden inline-flex items-center rounded-xl border border-border/60 bg-surface-container-low p-1">
+            <button
+              type="button"
+              className="rounded-lg bg-surface-container-lowest px-3 py-1.5 text-xs font-medium text-foreground shadow-sm"
+              aria-current="page"
+            >
+              Parent View
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push(`/results/${resultId}/clinician`)}
+              className="rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Clinician View
+            </button>
           </div>
+
+          <p className="text-[11px] text-muted-foreground">
+            Reviewed {new Date(result.analyzedAt).toLocaleString()}
+          </p>
         </div>
 
         <Card className="bg-surface-container-low">
           <CardContent className="grid gap-3 p-4 sm:grid-cols-3">
             <div>
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Summary</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Overall observation</p>
               <p className="mt-1 text-sm font-medium">
                 {reportBundle?.caregiver.observationsText ??
                   (result.concerns.overallLevel === "none"
@@ -539,76 +392,17 @@ export default function ResultsPage() {
               </p>
             </div>
             <div>
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Confidence</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">How certain this run is</p>
               <p className="mt-1 text-sm">{reportBundle?.caregiver.confidenceText ?? result.quality.confidenceNotes}</p>
             </div>
             <div>
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">What was assessed</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Recommended next step</p>
               <p className="mt-1 text-sm">
-                {result.concerns.assessedDomains.length > 0
-                  ? result.concerns.assessedDomains.map(formatDomainLabel).join(", ")
-                  : "No domains were confidently assessed."}
+                {reportBundle?.caregiver.monitoringGuidance ?? "Record another clip if symptoms change and share this result with your clinician."}
               </p>
             </div>
           </CardContent>
         </Card>
-
-        {(result.trackingTelemetry || result.backendInference || result.inferenceDecision) && (
-          <Card className="bg-surface-container-lowest">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Run Quality and Inference Status</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-3 text-xs sm:grid-cols-2">
-              <div className="rounded-xl bg-surface-container-low p-3">
-                <p className="font-semibold text-muted-foreground uppercase tracking-wide text-[10px]">Tracking telemetry</p>
-                {result.trackingTelemetry ? (
-                  <div className="mt-2 space-y-1.5 text-foreground/85">
-                    <p>Detection rate: {Math.round(result.trackingTelemetry.detectionRate * 100)}%</p>
-                    <p>Visible-joint ratio: {Math.round(result.trackingTelemetry.visibleJointRatio * 100)}%</p>
-                    <p>Sampled FPS: {result.trackingTelemetry.sampledFps}</p>
-                    <p>Frames: {result.trackingTelemetry.detectedFrames}/{result.trackingTelemetry.totalFrames}</p>
-                    <p>Temporal stability: {Math.round(result.trackingTelemetry.temporalStabilityScore * 100)}%</p>
-                    <p>Camera motion score: {result.trackingTelemetry.cameraMotionScore.toFixed(2)}</p>
-                    <p>Pipeline latency: {result.trackingTelemetry.processingLatencyMs} ms</p>
-                  </div>
-                ) : (
-                  <p className="mt-2 text-muted-foreground">Telemetry was not captured for this run.</p>
-                )}
-              </div>
-
-              <div className="rounded-xl bg-surface-container-low p-3">
-                <p className="font-semibold text-muted-foreground uppercase tracking-wide text-[10px]">Backend model inference</p>
-                {result.backendInference || result.inferenceDecision ? (
-                  <div className="mt-2 space-y-1.5 text-foreground/85">
-                    <p>Status: {result.backendInference?.available ? "Available" : "Unavailable"}</p>
-                    {result.inferenceDecision && (
-                      <>
-                        <p>Inference source: {result.inferenceDecision.source === "hybrid" ? "Hybrid (client + backend)" : "Client only fallback"}</p>
-                        <p>Fused composite probability: {Math.round(result.inferenceDecision.fusedCompositeProbability * 100)}%</p>
-                        <p>Confidence band: {result.inferenceDecision.confidenceBand}</p>
-                        <p className="text-muted-foreground">Policy: {result.inferenceDecision.fusionPolicy}</p>
-                      </>
-                    )}
-                    {result.backendInference?.available && result.backendInference.predictions && (
-                      <>
-                        <p>Composite risk probability: {Math.round(result.backendInference.predictions.composite_risk.probability * 100)}%</p>
-                        <p>Asymmetry probability: {Math.round(result.backendInference.predictions.gait_asymmetry.probability * 100)}%</p>
-                        <p>Trendelenburg probability: {Math.round(result.backendInference.predictions.trendelenburg_risk.probability * 100)}%</p>
-                      </>
-                    )}
-                    {!result.backendInference?.available && (
-                      <p className="text-muted-foreground">
-                        {result.inferenceDecision?.fallbackReason ?? result.backendInference?.error ?? "Backend model endpoint was unreachable, so this run used browser-only scoring."}
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <p className="mt-2 text-muted-foreground">No backend inference attempt was recorded for this run.</p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
         <div className="flex rounded-[1rem] bg-surface-container-low p-1">
           {TABS.map((tab) => {
@@ -634,7 +428,7 @@ export default function ResultsPage() {
           <div className="space-y-4">
             <Card className="bg-surface-container-lowest">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Movement Observations</CardTitle>
+                <CardTitle className="text-sm">What We Noticed In This Video</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 {CONCERN_DOMAINS.map((domain) => {
@@ -673,62 +467,50 @@ export default function ResultsPage() {
               </CardContent>
             </Card>
 
-            <Card className="bg-surface-container-lowest">
-              <CardHeader
-                className="pb-0 cursor-pointer"
-                onClick={() => setDetailsOpen((value) => !value)}
-              >
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm">Detailed Metrics</CardTitle>
-                  <span className="text-xs text-muted-foreground">
-                    {detailsOpen ? "Hide" : "Show"}
-                  </span>
-                </div>
-              </CardHeader>
-              {detailsOpen && (
-                <CardContent className="pt-3 space-y-2">
-                  {Object.entries(result.features).map(([key, metric]) => (
-                    <div
-                      key={key}
-                      className={`flex items-center justify-between rounded-xl bg-surface-container-low px-3 py-2 text-xs ${
-                        metric.suppressed ? "opacity-40" : ""
-                      }`}
-                    >
-                      <span className="font-medium capitalize">
-                        {key.replace(/([A-Z])/g, " $1").trim()}
-                      </span>
-                      <span className="tabular-nums font-mono">
-                        {metric.suppressed
-                          ? "—"
-                          : `${metric.value}${metric.unit ? ` ${metric.unit}` : ""}`}
-                        {!metric.suppressed && (
-                          <span className="text-muted-foreground ml-1.5">
-                            ({Math.round(metric.confidence * 100)}%)
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                  ))}
+            {result.concerns.suppressedDomains.length > 0 && (
+              <Card className="bg-surface-container-lowest">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">What Could Not Be Assessed Clearly</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2 text-xs text-muted-foreground">
+                  <p>
+                    Some movement areas did not have enough signal quality for a dependable interpretation in this recording.
+                  </p>
+                  <p>
+                    <strong>Not assessed:</strong>{" "}
+                    {result.concerns.suppressedDomains.map(formatDomainLabel).join(", ")}
+                  </p>
                 </CardContent>
-              )}
+              </Card>
+            )}
+
+            <Card className="bg-surface-container-lowest">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Tips For A Better Next Recording</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-xs text-muted-foreground">
+                {practicalRetakeTips.map((tip) => (
+                  <p key={tip} className="flex items-start gap-2">
+                    <span className="mt-[1px]">-</span>
+                    <span>{tip}</span>
+                  </p>
+                ))}
+              </CardContent>
             </Card>
-
-            <HowAnalysisWorksPanel result={result} />
-
-            <QualityCoachPanel
-              result={result}
-              onRecordAgain={() => router.push("/capture")}
-            />
 
             {reportBundle && (
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Caregiver Guidance</CardTitle>
+                  <CardTitle className="text-sm">What To Do Next</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2 text-xs text-muted-foreground">
-                  <p><strong>Limitations:</strong> {reportBundle.caregiver.limitationsText}</p>
                   <p><strong>Monitoring:</strong> {reportBundle.caregiver.monitoringGuidance}</p>
                   <p><strong>Professional follow-up:</strong> {reportBundle.caregiver.professionalEvalGuidance}</p>
+                  <details className="rounded-md border bg-muted/20 p-2">
+                    <summary className="cursor-pointer">See clip limitations</summary>
+                    <p className="mt-2">{reportBundle.caregiver.limitationsText}</p>
+                  </details>
+                  <p className="text-[11px]">{reportBundle.caregiver.disclaimerText}</p>
                 </CardContent>
               </Card>
             )}
@@ -739,8 +521,14 @@ export default function ResultsPage() {
                 className="flex-1 gap-2 text-xs"
                 onClick={() => router.push(`/results/${resultId}/refine`)}
               >
-                <MessageCircle className="h-3.5 w-3.5" />
-                Add follow-up details
+                Add notes for clinician
+              </Button>
+              <Button
+                variant="secondary"
+                className="flex-1 gap-2 text-xs"
+                onClick={() => router.push(`/results/${resultId}/clinician`)}
+              >
+                Open clinician packet
               </Button>
               {hasTrace && (
                 <Button
@@ -784,15 +572,15 @@ export default function ResultsPage() {
                 id="btn-export-pdf"
               >
                 <Download className="h-3.5 w-3.5" />
-                Export Report
+                Export summary PDF
               </Button>
               <Button
                 variant="secondary"
                 className="flex-1 gap-2 text-xs"
                 onClick={() => router.push("/capture")}
               >
-                <RefreshCw className="h-3.5 w-3.5" />
-                Analyze another clip
+                <Camera className="h-3.5 w-3.5" />
+                Record another clip
               </Button>
             </div>
           </div>
@@ -825,7 +613,6 @@ export default function ResultsPage() {
               <AnnotatedVideoPlayer
                 trace={result.trace!}
                 videoUrl={videoUrl!}
-                jumpToFrameIndex={jumpToFrameIndex}
               />
             ) : hasTrace && !hasVideo ? (
               <div className="text-center py-12 space-y-3">
@@ -834,7 +621,7 @@ export default function ResultsPage() {
                   The original video is no longer available in local storage.
                 </p>
                 <p className="text-xs text-muted-foreground/60">
-                  Evidence data is still available in the Evidence tab.
+                  Record a new clip if you want an updated annotated playback.
                 </p>
               </div>
             ) : (
@@ -842,292 +629,6 @@ export default function ResultsPage() {
                 <PlayCircle className="h-10 w-10 text-muted-foreground/40 mx-auto" />
                 <p className="text-sm text-muted-foreground">
                   Hero video playback needs a real analysis trace and a retained clip.
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === "clinician" && reportBundle && (
-          <div className="space-y-4">
-            {clinicianDerived && (
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Quick Clinician Scan (120 seconds)</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2 text-xs text-muted-foreground">
-                  <p>
-                    <strong>Overall concern:</strong>{" "}
-                    {formatUnknownValue(clinicianDerived.concernDomains.overallLevel)}
-                  </p>
-                  <p>
-                    <strong>Follow-up priority:</strong>{" "}
-                    {formatUnknownValue(clinicianDerived.concernDomains.followupPriority)}
-                  </p>
-                  <p>
-                    <strong>Assessed domains:</strong>{" "}
-                    {clinicianDerived.assessedDomains.length > 0
-                      ? clinicianDerived.assessedDomains.map(formatDomainLabel).join(", ")
-                      : "none"}
-                  </p>
-                  <p>
-                    <strong>Suppressed domains:</strong>{" "}
-                    {clinicianDerived.suppressedDomains.length > 0
-                      ? clinicianDerived.suppressedDomains.map(formatDomainLabel).join(", ")
-                      : "none"}
-                  </p>
-                  <p>
-                    <strong>Confidence context:</strong>{" "}
-                    {formatUnknownValue(
-                      clinicianDerived.qualitySummary.confidenceNotes ?? result.quality.confidenceNotes,
-                    )}
-                  </p>
-                </CardContent>
-              </Card>
-            )}
-
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Clinician Packet</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 text-xs">
-                <p><strong>Structured notes:</strong> {reportBundle.clinician.structuredNotes ?? "No additional notes"}</p>
-                <p><strong>Assessment mode:</strong> {String(reportBundle.clinician.profileSummary.assessmentMode ?? "unknown")}</p>
-                <p><strong>View:</strong> {String(reportBundle.clinician.profileSummary.viewLabel ?? "unknown")}</p>
-                <p><strong>Created:</strong> {new Date(reportBundle.clinician.createdAt).toLocaleString()}</p>
-              </CardContent>
-            </Card>
-
-            {clinicianDerived && (
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Clinical Details</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4 text-xs">
-                  <div className="space-y-1.5">
-                    <p className="font-semibold text-muted-foreground">Profile Summary</p>
-                    {Object.entries(clinicianDerived.profileSummary).map(([key, value]) => (
-                      <div key={`profile_${key}`} className="flex items-start justify-between gap-3">
-                        <span className="text-muted-foreground">{formatFieldLabel(key)}</span>
-                        <span className="text-right">{formatUnknownValue(value)}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <p className="font-semibold text-muted-foreground">Intake Context</p>
-                    {Object.entries(clinicianDerived.intakeContext).map(([key, value]) => (
-                      <div key={`intake_${key}`} className="flex items-start justify-between gap-3">
-                        <span className="text-muted-foreground">{formatFieldLabel(key)}</span>
-                        <span className="text-right">{formatUnknownValue(value)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {clinicianDerived && (
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Structured Metrics</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2 text-xs">
-                  {clinicianDerived.metricRows.length === 0 ? (
-                    <p className="text-muted-foreground">No metric rows available.</p>
-                  ) : (
-                    clinicianDerived.metricRows.map(([metricName, raw]) => {
-                      const metric = (raw ?? {}) as {
-                        value?: number | null;
-                        unit?: string | null;
-                        confidencePct?: number;
-                        assessed?: boolean;
-                        limitation?: string | null;
-                      };
-
-                      const valueText = metric.value === null || metric.value === undefined
-                        ? "—"
-                        : `${metric.value}${metric.unit ? ` ${metric.unit}` : ""}`;
-
-                      return (
-                        <div key={metricName} className="rounded-md border p-2.5">
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="font-medium">{formatFieldLabel(metricName)}</p>
-                            <p className="tabular-nums">{valueText}</p>
-                          </div>
-                          <p className="mt-1 text-muted-foreground">
-                            Confidence: {metric.confidencePct ?? 0}% · {metric.assessed ? "Assessed" : "Suppressed"}
-                          </p>
-                          {metric.limitation && (
-                            <p className="mt-1 text-muted-foreground">Limitation: {metric.limitation}</p>
-                          )}
-                        </div>
-                      );
-                    })
-                  )}
-                </CardContent>
-              </Card>
-            )}
-
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Evidence and Limits</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 text-xs text-muted-foreground">
-                <p>
-                  <strong>Suppressed metrics:</strong>{" "}
-                  {Array.isArray(reportBundle.clinician.qualitySummary?.suppressedMetrics)
-                    ? (reportBundle.clinician.qualitySummary?.suppressedMetrics as string[]).join(", ") || "none"
-                    : "none"}
-                </p>
-                <p>
-                  <strong>Quality context:</strong>{" "}
-                  {String(reportBundle.clinician.qualitySummary?.confidenceNotes ?? result.quality.confidenceNotes)}
-                </p>
-                <p>
-                  <strong>Follow-up priority:</strong>{" "}
-                  {String((reportBundle.clinician.concernDomains as Record<string, unknown>).followupPriority ?? "routine")}
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Quality Limitation Appendix</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 text-xs text-muted-foreground">
-                <p>
-                  <strong>Assessment mode:</strong> {result.quality.assessmentMode}
-                </p>
-                <p>
-                  <strong>Suppressed domains:</strong>{" "}
-                  {result.concerns.suppressedDomains.length > 0
-                    ? result.concerns.suppressedDomains.map(formatDomainLabel).join(", ")
-                    : "none"}
-                </p>
-                <p>
-                  <strong>Borderline quality reasons:</strong>{" "}
-                  {result.quality.borderlineReasons.length > 0
-                    ? result.quality.borderlineReasons.join(" | ")
-                    : "none"}
-                </p>
-                <p>
-                  <strong>Failure reasons:</strong>{" "}
-                  {result.quality.failureReasons.length > 0
-                    ? result.quality.failureReasons.join(" | ")
-                    : "none"}
-                </p>
-                {result.trackingTelemetry && (
-                  <p>
-                    <strong>Telemetry context:</strong>{" "}
-                    detection {Math.round(result.trackingTelemetry.detectionRate * 100)}% · visible joints {Math.round(result.trackingTelemetry.visibleJointRatio * 100)}% · stability {Math.round(result.trackingTelemetry.temporalStabilityScore * 100)}% · motion {result.trackingTelemetry.cameraMotionScore.toFixed(2)}
-                  </p>
-                )}
-                {result.inferenceDecision && (
-                  <p>
-                    <strong>Inference provenance:</strong>{" "}
-                    source {result.inferenceDecision.source} · band {result.inferenceDecision.confidenceBand} · fused {Math.round(result.inferenceDecision.fusedCompositeProbability * 100)}%{result.inferenceDecision.modelVersion ? ` · model ${result.inferenceDecision.modelVersion}` : ""}
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-
-            <div className="flex flex-wrap gap-3">
-              <Button variant="outline" className="flex-1 gap-2 text-xs" onClick={downloadClinicianPacket}>
-                <Download className="h-3.5 w-3.5" />
-                Download Packet JSON
-              </Button>
-              <Button variant="outline" className="flex-1 gap-2 text-xs" onClick={copyHandoffText}>
-                {copiedHandoff ? <Check className="h-3.5 w-3.5" /> : <Clipboard className="h-3.5 w-3.5" />}
-                {copiedHandoff ? "Handoff copied" : "Copy Handoff Text"}
-              </Button>
-              <Button variant="outline" className="flex-1 gap-2 text-xs" onClick={() => window.print()}>
-                <Printer className="h-3.5 w-3.5" />
-                Print Packet
-              </Button>
-            </div>
-
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Secure Share Link</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 text-xs text-muted-foreground">
-                <p>
-                  Create a time-limited link for clinician review. Links expire in 72 hours and are capped at 25 opens.
-                </p>
-                <div className="flex flex-wrap gap-3">
-                  <Button
-                    variant="outline"
-                    className="gap-2 text-xs"
-                    onClick={createShareLink}
-                    disabled={isCreatingShare}
-                  >
-                    <Link2 className="h-3.5 w-3.5" />
-                    {isCreatingShare ? "Creating link..." : "Create Share Link"}
-                  </Button>
-                  {shareUrl && (
-                    <Button variant="outline" className="gap-2 text-xs" onClick={copyShareUrl}>
-                      <Copy className="h-3.5 w-3.5" />
-                      Copy Share URL
-                    </Button>
-                  )}
-                </div>
-
-                {shareError && (
-                  <p className="text-red-600">{shareError}</p>
-                )}
-
-                {shareUrl && (
-                  <div className="rounded-md border bg-muted/40 p-3">
-                    <p className="break-all">{shareUrl}</p>
-                    {shareExpiresAt && (
-                      <p className="mt-1 text-[11px] text-muted-foreground">
-                        Expires: {new Date(shareExpiresAt).toLocaleString()}
-                      </p>
-                    )}
-                    <div className="mt-2">
-                      <a href={shareUrl} target="_blank" rel="noreferrer">
-                        <Button variant="secondary" size="sm" className="text-xs">
-                          Open Shared View
-                        </Button>
-                      </a>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
-        {activeTab === "evidence" && (
-          <div className="space-y-4">
-            {hasTrace ? (
-              <>
-                <EventTimeline
-                  trace={result.trace!}
-                  onJumpToFrame={(frameIndex) => {
-                    setJumpToFrameIndex(frameIndex);
-                    setActiveTab("video");
-                  }}
-                />
-                {keyFrames && (
-                  <KeyFrameGallery
-                    keyFrames={keyFrames}
-                    trace={result.trace!}
-                    onFrameClick={(frameIndex) => {
-                      setJumpToFrameIndex(frameIndex);
-                      setActiveTab("video");
-                    }}
-                  />
-                )}
-                <HowAnalysisWorksPanel result={result} />
-                <AnalysisTracePanel trace={result.trace!} concernEvidence={concernEvidence} />
-              </>
-            ) : (
-              <div className="text-center py-12 space-y-3">
-                <Microscope className="h-10 w-10 text-muted-foreground/40 mx-auto" />
-                <p className="text-sm text-muted-foreground">
-                  Detection evidence is only available for runs with a real trace.
                 </p>
               </div>
             )}
@@ -1142,11 +643,6 @@ export default function ResultsPage() {
           <ArrowLeft className="h-3.5 w-3.5" />
           Back to start
         </Button>
-
-        {/* P1-09: Clinical References */}
-        <div className="mt-4">
-          <ClinicalReferencesPanel />
-        </div>
       </div>
     </div>
   );

@@ -71,6 +71,7 @@ export default function AnalyzingPage() {
         sourceClipId: session.sourceClipId ?? null,
         sourceClipFilename: session.sourceClipFilename ?? session.videoMeta?.name ?? null,
         approvedForDemo: session.approvedForDemo ?? null,
+        intakeContext: session.clinicianContext,
       },
     )
       .then((result) => {

@@ -52,9 +52,20 @@ export interface PipelineProgress {
   message: string;
 }
 
+export interface ClinicianIntakeContext {
+  caregiverMainConcern?: string | null;
+  symptomDuration?: string | null;
+  fallsFrequency?: string | null;
+  recentTherapyChanges?: string | null;
+  recentSurgeryInterventionChanges?: string | null;
+  assistiveDeviceSupport?: string | null;
+  priorDiagnosisOrSpecialistReview?: string | null;
+  correctedAge?: string | null;
+}
+
 export interface AnalysisSessionResult {
   id: string;
-  session: { nickname: string; ageMonths: number };
+  session: { nickname: string; ageMonths: number; intakeContext?: ClinicianIntakeContext };
   run: RunProvenance;
   assessmentMode: AssessmentMode;
   quality: {
@@ -122,6 +133,7 @@ export interface RunAnalysisOptions {
   sourceClipId?: string | null;
   sourceClipFilename?: string | null;
   approvedForDemo?: boolean | null;
+  intakeContext?: ClinicianIntakeContext;
 }
 
 interface MetricValue {
@@ -216,6 +228,7 @@ export async function runAnalysisPipeline(
   const modelId: PoseModelId = 'mediapipe_full';
   const modelLabel = 'MediaPipe Full';
   let sampleFps = 10;
+  const intakeContext = sanitizeClinicianIntakeContext(options.intakeContext);
 
   function report(stageIndex: number, stageProgress: number = 0) {
     const s = STAGES[stageIndex];
@@ -291,6 +304,7 @@ export async function runAnalysisPipeline(
             modelId,
             modelLabel,
           }),
+          intakeContext,
         );
       }
 
@@ -553,7 +567,7 @@ export async function runAnalysisPipeline(
 
         const result: AnalysisSessionResult = {
           id: resultId,
-          session: { nickname, ageMonths },
+          session: { nickname, ageMonths, intakeContext },
           run,
           assessmentMode: assessment.assessmentMode,
           quality: {
@@ -650,16 +664,43 @@ export async function runAnalysisPipeline(
 
 const ZERO_METRIC: MetricValue = { value: 0, confidence: 0, limitedReason: 'Assessment not possible', suppressed: true };
 
+function normalizeOptionalContextText(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function sanitizeClinicianIntakeContext(
+  context?: ClinicianIntakeContext,
+): ClinicianIntakeContext | undefined {
+  if (!context) return undefined;
+
+  const normalized: ClinicianIntakeContext = {
+    caregiverMainConcern: normalizeOptionalContextText(context.caregiverMainConcern),
+    symptomDuration: normalizeOptionalContextText(context.symptomDuration),
+    fallsFrequency: normalizeOptionalContextText(context.fallsFrequency),
+    recentTherapyChanges: normalizeOptionalContextText(context.recentTherapyChanges),
+    recentSurgeryInterventionChanges: normalizeOptionalContextText(context.recentSurgeryInterventionChanges),
+    assistiveDeviceSupport: normalizeOptionalContextText(context.assistiveDeviceSupport),
+    priorDiagnosisOrSpecialistReview: normalizeOptionalContextText(context.priorDiagnosisOrSpecialistReview),
+    correctedAge: normalizeOptionalContextText(context.correctedAge),
+  };
+
+  const hasAnyValue = Object.values(normalized).some((value) => typeof value === 'string' && value.length > 0);
+  return hasAnyValue ? normalized : undefined;
+}
+
 function makeCannotAssessResult(
   nickname: string,
   ageMonths: number,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   assessment: any,
   run: RunProvenance,
+  intakeContext?: ClinicianIntakeContext,
 ): AnalysisSessionResult {
   return withGeneratedReports({
     id: 'r_' + Date.now().toString(36),
-    session: { nickname, ageMonths },
+    session: { nickname, ageMonths, intakeContext },
     run,
     assessmentMode: 'cannot_assess',
     quality: {
@@ -719,6 +760,7 @@ function makeValidationFailureResult(
   modelId: PoseModelId = 'unknown',
   modelLabel: string = 'Unknown model',
 ): AnalysisSessionResult {
+  const intakeContext = sanitizeClinicianIntakeContext(options.intakeContext);
   const run = buildRunProvenance({
     classification: 'validation_failure',
     validationMode: options.validationMode ?? false,
@@ -734,7 +776,7 @@ function makeValidationFailureResult(
 
   return withGeneratedReports({
     id: 'r_' + Date.now().toString(36),
-    session: { nickname, ageMonths },
+    session: { nickname, ageMonths, intakeContext },
     run,
     assessmentMode: 'cannot_assess',
     quality: {
@@ -791,6 +833,7 @@ function withGeneratedReports(result: AnalysisSessionResult): AnalysisSessionRes
       assessmentId: result.id,
       nickname: result.session.nickname,
       ageMonths: result.session.ageMonths,
+      intakeContext: result.session.intakeContext,
       analyzedAt: result.analyzedAt,
       concerns: {
         asymmetry: result.concerns.asymmetry,

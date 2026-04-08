@@ -131,6 +131,55 @@ export default function ClinicianResultPage() {
     CONCERN_LABELS[result.concerns.overallLevel] ?? formatDomainLabel(result.concerns.overallLevel);
   const assessedDomains = result.concerns.assessedDomains.map(formatDomainLabel);
   const suppressedDomains = result.concerns.suppressedDomains.map(formatDomainLabel);
+  const assessedDomainsSummary = assessedDomains.length > 0 ? assessedDomains.join(", ") : "None";
+  const notAssessedDomainsSummary = suppressedDomains.length > 0 ? suppressedDomains.join(", ") : "None";
+  const notCapturedInWorkflow = "Not captured in current workflow";
+  const reportIntakeContext = (result.reports?.clinician?.intakeContext ?? {}) as Record<string, unknown>;
+  const sessionIntakeContext = (result.session.intakeContext ?? {}) as Record<string, unknown>;
+
+  const normalizeContextValue = (value: unknown): string | null => {
+    if (typeof value !== "string") return null;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  };
+
+  const contextValue = (primary: unknown, secondary: unknown): string => {
+    return normalizeContextValue(primary) ?? normalizeContextValue(secondary) ?? notCapturedInWorkflow;
+  };
+
+  const caregiverMainConcern = contextValue(
+    reportIntakeContext.caregiverMainConcern,
+    sessionIntakeContext.caregiverMainConcern,
+  );
+  const symptomDuration = contextValue(
+    reportIntakeContext.symptomDuration,
+    sessionIntakeContext.symptomDuration,
+  );
+  const fallsFrequency = contextValue(
+    reportIntakeContext.fallsFrequency,
+    sessionIntakeContext.fallsFrequency,
+  );
+  const recentTherapyChanges = contextValue(
+    reportIntakeContext.recentTherapyChanges,
+    sessionIntakeContext.recentTherapyChanges,
+  );
+  const recentSurgeryInterventionChanges = contextValue(
+    reportIntakeContext.recentSurgeryInterventionChanges,
+    sessionIntakeContext.recentSurgeryInterventionChanges,
+  );
+  const assistiveDeviceSupport = contextValue(
+    reportIntakeContext.assistiveDeviceSupport,
+    sessionIntakeContext.assistiveDeviceSupport,
+  );
+  const priorDiagnosisOrSpecialistReview = contextValue(
+    reportIntakeContext.priorDiagnosisOrSpecialistReview,
+    sessionIntakeContext.priorDiagnosisOrSpecialistReview,
+  );
+  const correctedAge = contextValue(
+    reportIntakeContext.correctedAge,
+    sessionIntakeContext.correctedAge,
+  );
+
   const packetTimestamp = result.analyzedAt ?? result.run.analyzedAt;
   const clipUsabilityLabel =
     result.quality.result === "pass"
@@ -158,24 +207,24 @@ export default function ClinicianResultPage() {
         domainLabel: domain.label,
         statusLabel: "Not assessed",
         statusClass: "bg-slate-100 text-slate-700 border-slate-300",
-        reason: "This recording did not provide enough clear signal for a dependable interpretation.",
+        reason: "Insufficient signal in this recording for a dependable interpretation.",
       };
     }
 
     if (isBestEffort || hasLimitedFrames || hasLowerConfidence || Boolean(evidence?.missingInfo)) {
-      let reason = "Assessment is available, but should be interpreted with extra caution.";
+      let reason = "Assessment is available, with limited confidence in this recording.";
 
       if (isBestEffort) {
-        reason = "This was a preliminary best-effort run, so confidence is intentionally conservative.";
+        reason = "Preliminary best-effort run; confidence is intentionally conservative.";
       } else if (hasLimitedFrames) {
-        reason = "This assessment is based on a limited number of usable moments in the clip.";
+        reason = "Based on a limited number of usable moments in this clip.";
       } else if (hasLowerConfidence) {
-        reason = "Signal clarity was moderate, so this domain is reported as partial rather than final.";
+        reason = "Signal clarity was moderate, so interpretation is reported with caution.";
       }
 
       return {
         domainLabel: domain.label,
-        statusLabel: "Partially assessed",
+        statusLabel: "Assessed with caution",
         statusClass: "bg-amber-50 text-amber-700 border-amber-200",
         reason,
       };
@@ -185,7 +234,7 @@ export default function ClinicianResultPage() {
       domainLabel: domain.label,
       statusLabel: "Assessed",
       statusClass: "bg-emerald-50 text-emerald-700 border-emerald-200",
-      reason: "Clear and consistent signal was available across the clip for this domain.",
+      reason: "Clear and consistent signal was available for this domain.",
     };
   });
 
@@ -215,66 +264,134 @@ export default function ClinicianResultPage() {
       {isBestEffort && (
         <div className="print-hidden border-b border-amber-200 bg-amber-50 px-4 py-2">
           <p className="text-xs text-amber-700">
-            Preliminary clinician packet: some domains were suppressed due to limited confidence.
+            Preliminary packet: some domains are marked as not assessed due to limited confidence.
           </p>
         </div>
       )}
 
-      <div className="clinician-packet__content mx-auto max-w-5xl space-y-5 px-4 py-6">
+      <div className="clinician-packet__content mx-auto max-w-5xl space-y-4 px-4 py-6">
         <div className="space-y-2">
+          <div className="print-hidden inline-flex items-center rounded-xl border border-border/60 bg-surface-container-low p-1">
+            <button
+              type="button"
+              onClick={() => router.push(`/results/${resultId}`)}
+              className="rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Parent View
+            </button>
+            <button
+              type="button"
+              className="rounded-lg bg-surface-container-lowest px-3 py-1.5 text-xs font-medium text-foreground shadow-sm"
+              aria-current="page"
+            >
+              Clinician View
+            </button>
+          </div>
+
           <h1 className="text-2xl font-bold">Clinical Handoff Packet</h1>
           <p className="text-sm text-muted-foreground">
-            For clinician and care-team review. This packet groups summary findings, visual evidence,
-            detailed signals, and caveats in one handoff-ready view.
+            Decision-first summary for clinical review. Advanced evidence is collapsed in section 7.
           </p>
         </div>
 
         <Card className="print-section">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">1. Packet header</CardTitle>
+            <CardTitle className="text-sm">1. Clinical Decision Snapshot</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <CardContent className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-lg border bg-muted/20 p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Case and recipient</p>
-                <p className="mt-1 text-sm font-medium">Clinician / care team</p>
-                <p className="text-xs text-muted-foreground">Case: {result.session.nickname}</p>
-                <p className="text-xs text-muted-foreground">Result ID: {resultId}</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Overall signal</p>
+                <Badge variant="outline" className={`mt-2 text-[10px] ${CONCERN_BADGE_STYLES[result.concerns.overallLevel] ?? ""}`}>
+                  {overallConcernLabel}
+                </Badge>
               </div>
 
               <div className="rounded-lg border bg-muted/20 p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Clip reviewed</p>
-                <p className="mt-1 text-xs text-muted-foreground">Source: {result.run.sourceClipFilename ?? "Uploaded clip"}</p>
-                <p className="text-xs text-muted-foreground">Direction: {direction}</p>
-                <p className="text-xs text-muted-foreground">View: {result.concerns.viewLabel}</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Follow-up priority</p>
+                <p className="mt-1 text-sm font-medium">{followUpRecommendation}</p>
+              </div>
+
+              <div className="rounded-lg border bg-muted/20 p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Coverage</p>
+                <p className="mt-1 text-sm font-medium">
+                  {result.concerns.assessedDomains.length} assessed / {CONCERN_DOMAINS.length} domains
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Not assessed in this recording: {result.concerns.suppressedDomains.length}
+                </p>
+              </div>
+
+              <div className="rounded-lg border bg-muted/20 p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Recording usability</p>
+                <p className="mt-1 text-sm font-medium">{clipUsabilityLabel}</p>
+              </div>
+            </div>
+
+            <div className="rounded-lg border bg-muted/20 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Interpretation at a glance</p>
+              <p className="mt-1 text-sm">{observedSummary}</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="print-section">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">2. Context for This Recording</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="rounded-lg border bg-muted/20 p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Case details</p>
+                <p className="mt-1 text-xs text-muted-foreground">Case: {result.session.nickname}</p>
+                <p className="text-xs text-muted-foreground">Result ID: {resultId}</p>
                 <p className="text-xs text-muted-foreground">
                   Packet time: {packetTimestamp ? new Date(packetTimestamp).toLocaleString() : "Unknown"}
                 </p>
               </div>
 
               <div className="rounded-lg border bg-muted/20 p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Clip usability</p>
-                <p className="mt-1 text-sm font-medium">{clipUsabilityLabel}</p>
-                <p className="text-xs text-muted-foreground">Confidence note: {result.quality.confidenceNotes}</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Recording details</p>
+                <p className="mt-1 text-xs text-muted-foreground">Source: {result.run.sourceClipFilename ?? "Uploaded clip"}</p>
+                <p className="text-xs text-muted-foreground">Direction: {direction}</p>
+                <p className="text-xs text-muted-foreground">View: {result.concerns.viewLabel}</p>
+                <p className="text-xs text-muted-foreground">Assessment mode: {formatDomainLabel(result.assessmentMode)}</p>
               </div>
-            </div>
 
-            <div className="rounded-lg border bg-muted/20 p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">First-pass interpretation</p>
-              <p className="mt-1 text-sm">{observedSummary}</p>
-              <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
-                <p className="text-xs text-muted-foreground">
-                  Assessment mode: <span className="font-medium text-foreground">{formatDomainLabel(result.assessmentMode)}</span>
+              <div className="rounded-lg border bg-muted/20 p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Clinical context from intake
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Caregiver main concern: {caregiverMainConcern}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Follow-up recommendation: <span className="font-medium text-foreground">{followUpRecommendation}</span>
+                  First noticed / duration: {symptomDuration}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Falls frequency: {fallsFrequency}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Recent therapy changes: {recentTherapyChanges}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Recent surgery/intervention changes: {recentSurgeryInterventionChanges}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Assistive device / walking support: {assistiveDeviceSupport}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Prior diagnosis / specialist review: {priorDiagnosisOrSpecialistReview}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Corrected age (if provided): {correctedAge}
                 </p>
               </div>
             </div>
 
             <details className="print-hidden rounded-lg border bg-muted/20 p-3">
               <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Technical provenance (optional)
+                Technical provenance (optional details)
               </summary>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <RunProvenanceBadge run={result.run} />
@@ -282,7 +399,7 @@ export default function ClinicianResultPage() {
                   {result.run.modelLabel}
                 </Badge>
                 <Badge variant="outline" className="text-[10px]">
-                  Overall: {overallConcernLabel}
+                  Overall signal: {overallConcernLabel}
                 </Badge>
               </div>
             </details>
@@ -293,37 +410,10 @@ export default function ClinicianResultPage() {
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm">
               <Stethoscope className="h-4 w-4" />
-              2. Summary
+              3. Domain Findings Summary
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">What was observed</p>
-                <p className="text-sm">{observedSummary}</p>
-              </div>
-
-              <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">What was assessable</p>
-                <p className="text-xs text-muted-foreground">
-                  Assessed domains: {assessedDomains.length > 0 ? assessedDomains.join(", ") : "None"}
-                </p>
-              </div>
-
-              <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">What was unclear</p>
-                <p className="text-xs text-muted-foreground">
-                  Not assessed: {suppressedDomains.length > 0 ? suppressedDomains.join(", ") : "None"}
-                </p>
-              </div>
-
-              <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Recommended follow-up</p>
-                <p className="text-sm font-medium">{followUpRecommendation}</p>
-                <p className="text-xs text-muted-foreground">Clip usability: {clipUsabilityLabel}</p>
-              </div>
-            </div>
-
             <div className="space-y-3">
               {CONCERN_DOMAINS.map((domain) => {
                 const level = result.concerns[domain.key];
@@ -335,11 +425,11 @@ export default function ClinicianResultPage() {
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="text-sm font-medium">{domain.label}</p>
                       <Badge variant="outline" className={`text-[10px] ${CONCERN_BADGE_STYLES[level] ?? ""}`}>
-                        {isSuppressed ? "Could not evaluate clearly" : CONCERN_LABELS[level] ?? level}
+                        {isSuppressed ? "Not assessed" : CONCERN_LABELS[level] ?? level}
                       </Badge>
                     </div>
                     <p className="mt-2 text-xs text-muted-foreground">
-                      {evidence?.explanation ?? "No detailed evidence text available for this domain."}
+                      {evidence?.explanation ?? "No detailed evidence narrative is available for this domain."}
                     </p>
                   </div>
                 );
@@ -350,150 +440,94 @@ export default function ClinicianResultPage() {
 
         <Card className="print-section">
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <Video className="h-4 w-4" />
-              3. Evidence
-            </CardTitle>
+            <CardTitle className="text-sm">4. Assessability and Confidence</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="rounded-lg border bg-muted/20 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Assessability matrix</p>
+              <div className="mt-2 overflow-x-auto rounded-md border bg-background">
+                <table className="w-full min-w-[520px] border-collapse text-left text-xs">
+                  <thead>
+                    <tr className="border-b bg-muted/30">
+                      <th className="px-3 py-2 font-semibold text-foreground">Domain</th>
+                      <th className="px-3 py-2 font-semibold text-foreground">Status</th>
+                      <th className="px-3 py-2 font-semibold text-foreground">Interpretive note</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {assessabilityRows.map((row) => (
+                      <tr key={row.domainLabel} className="border-b last:border-b-0">
+                        <td className="px-3 py-2 font-medium text-foreground">{row.domainLabel}</td>
+                        <td className="px-3 py-2">
+                          <Badge variant="outline" className={`text-[10px] ${row.statusClass}`}>
+                            {row.statusLabel}
+                          </Badge>
+                        </td>
+                        <td className="px-3 py-2 text-muted-foreground">{row.reason}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
             <div className="grid gap-3 md:grid-cols-2">
               <div className="rounded-lg border bg-muted/20 p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Why this result appears</p>
-                {evidenceHighlights.length > 0 ? (
-                  <ul className="mt-2 space-y-1.5 text-xs text-muted-foreground">
-                    {evidenceHighlights.map((entry) => (
-                      <li key={entry.domain}>
-                        <span className="font-medium text-foreground">{formatDomainLabel(entry.domain)}:</span> {entry.explanation}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-2 text-xs text-muted-foreground">No domain-level evidence narrative was generated.</p>
-                )}
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Confidence note</p>
+                <p className="mt-2 text-xs text-muted-foreground">{result.quality.confidenceNotes}</p>
               </div>
 
               <div className="rounded-lg border bg-muted/20 p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Assessability matrix</p>
-                <div className="mt-2 overflow-x-auto rounded-md border bg-background">
-                  <table className="w-full min-w-[520px] border-collapse text-left text-xs">
-                    <thead>
-                      <tr className="border-b bg-muted/30">
-                        <th className="px-3 py-2 font-semibold text-foreground">Signal / domain</th>
-                        <th className="px-3 py-2 font-semibold text-foreground">Status</th>
-                        <th className="px-3 py-2 font-semibold text-foreground">Reason</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {assessabilityRows.map((row) => (
-                        <tr key={row.domainLabel} className="border-b last:border-b-0">
-                          <td className="px-3 py-2 font-medium text-foreground">{row.domainLabel}</td>
-                          <td className="px-3 py-2">
-                            <Badge variant="outline" className={`text-[10px] ${row.statusClass}`}>
-                              {row.statusLabel}
-                            </Badge>
-                          </td>
-                          <td className="px-3 py-2 text-muted-foreground">{row.reason}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Coverage summary</p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Assessed domains: {assessedDomainsSummary}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Not assessed in this recording: {notAssessedDomainsSummary}
+                </p>
               </div>
-            </div>
-
-            <div className="print-hidden space-y-4">
-              {hasTrace && hasVideo && videoUrl ? (
-                <AnnotatedVideoPlayer
-                  trace={result.trace!}
-                  videoUrl={videoUrl}
-                  jumpToFrameIndex={jumpToFrameIndex}
-                  audience="clinician"
-                  showAdvancedControls={false}
-                />
-              ) : hasTrace ? (
-                <p className="text-xs text-muted-foreground">
-                  Trace is present, but source video is unavailable in local storage.
-                </p>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  Full video evidence requires an analysis trace.
-                </p>
-              )}
-
-              {hasTrace && (
-                <>
-                  <EventTimeline
-                    trace={result.trace!}
-                    onJumpToFrame={(frameIndex: number) => setJumpToFrameIndex(frameIndex)}
-                  />
-                  {keyFrames && (
-                    <KeyFrameGallery
-                      keyFrames={keyFrames}
-                      trace={result.trace!}
-                      videoUrl={videoUrl}
-                      renderMode="timestamps-only"
-                      onFrameClick={(frameIndex: number) => setJumpToFrameIndex(frameIndex)}
-                    />
-                  )}
-                </>
-              )}
-            </div>
-
-            <div className="print-only rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
-              <p className="font-semibold uppercase tracking-wide">Video evidence note</p>
-              <p className="mt-2">
-                Interactive replay controls, overlays, and jump controls are intentionally hidden in print.
-                Use the digital packet when frame-by-frame playback is needed.
-              </p>
             </div>
           </CardContent>
         </Card>
 
         <Card className="print-section">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">4. Clinical details</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="rounded-lg border p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Measured movement signals</p>
-              <div className="mt-2 space-y-2">
-                {Object.entries(result.features).map(([key, metric]) => (
-                  <div
-                    key={key}
-                    className={`grid grid-cols-[1fr_auto] items-center gap-2 text-xs ${metric.suppressed ? "opacity-45" : ""}`}
-                  >
-                    <div>
-                      <p className="font-medium">{formatDomainLabel(key)}</p>
-                      {metric.limitedReason && (
-                        <p className="text-[11px] text-muted-foreground">{metric.limitedReason}</p>
-                      )}
-                    </div>
-                    <p className="font-mono tabular-nums">
-                      {metric.suppressed ? "-" : `${metric.value}${metric.unit ? ` ${metric.unit}` : ""}`}
-                      {!metric.suppressed && (
-                        <span className="ml-1 text-muted-foreground">({Math.round(metric.confidence * 100)}%)</span>
-                      )}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {hasTrace && <AnalysisTracePanel trace={result.trace!} concernEvidence={concernEvidence} />}
-            <HowAnalysisWorksPanel result={result} />
-          </CardContent>
-        </Card>
-
-        <Card className="print-section">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">5. Limits and caveats</CardTitle>
+            <CardTitle className="text-sm">5. Recommended Follow-up Actions</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-xs text-muted-foreground">
-            <p>{result.quality.confidenceNotes}</p>
+            <div className="rounded-lg border bg-muted/20 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Primary recommendation</p>
+              <p className="mt-2 text-sm font-medium text-foreground">{followUpRecommendation}</p>
+              <p className="mt-1">
+                Use as structured support for clinical judgment, not as a standalone diagnosis.
+              </p>
+            </div>
+
+            <div className="rounded-lg border bg-muted/20 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Action checklist</p>
+              <ul className="mt-2 list-disc space-y-1 pl-4">
+                <li>Review observed domains in clinical context: {assessedDomainsSummary}.</li>
+                <li>Document uncertainty for domains not assessed in this recording: {notAssessedDomainsSummary}.</li>
+                <li>If confidence is limited, request additional angle capture or repeat recording.</li>
+              </ul>
+            </div>
+
+            <p>
+              Operational sharing controls remain in section 8 to keep interpretation and logistics separate.
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="print-section">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">6. Quality Limits and Caveats</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm">{result.quality.confidenceNotes}</p>
 
             {result.quality.failureReasons.length > 0 && (
               <div className="rounded-lg border border-red-200 bg-red-50/70 p-3">
-                <p className="font-semibold text-red-800">Quality failures noted</p>
+                <p className="font-semibold text-red-800">Quality limits requiring caution</p>
                 <ul className="mt-1 list-disc space-y-1 pl-4 text-red-900/80">
                   {result.quality.failureReasons.map((reason, index) => (
                     <li key={index}>{reason}</li>
@@ -504,7 +538,7 @@ export default function ClinicianResultPage() {
 
             {result.quality.borderlineReasons.length > 0 && (
               <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3">
-                <p className="font-semibold text-amber-800">Borderline quality factors</p>
+                <p className="font-semibold text-amber-800">Factors lowering confidence</p>
                 <ul className="mt-1 list-disc space-y-1 pl-4 text-amber-900/80">
                   {result.quality.borderlineReasons.map((reason, index) => (
                     <li key={index}>{reason}</li>
@@ -513,22 +547,128 @@ export default function ClinicianResultPage() {
               </div>
             )}
 
-            <p>
-              Assessed domains: {assessedDomains.length > 0 ? assessedDomains.join(", ") : "None"}
-            </p>
-            <p>
-              Not assessed: {suppressedDomains.length > 0 ? suppressedDomains.join(", ") : "None"}
-            </p>
+            {suppressedDomains.length > 0 && (
+              <p className="text-sm text-muted-foreground">
+                Not assessed in this recording: {notAssessedDomainsSummary}
+              </p>
+            )}
           </CardContent>
         </Card>
 
         <Card className="print-section print-hidden">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">6. Handoff actions</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <Video className="h-4 w-4" />
+              7. Appendix / Advanced Evidence
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <details className="rounded-lg border bg-muted/20 p-3">
+              <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Open advanced evidence panels
+              </summary>
+
+              <div className="mt-3 space-y-4">
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="rounded-lg border bg-background p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Why this result appears</p>
+                    {evidenceHighlights.length > 0 ? (
+                      <ul className="mt-2 space-y-1.5 text-xs text-muted-foreground">
+                        {evidenceHighlights.map((entry) => (
+                          <li key={entry.domain}>
+                            <span className="font-medium text-foreground">{formatDomainLabel(entry.domain)}:</span> {entry.explanation}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-2 text-xs text-muted-foreground">No domain-level evidence narrative was generated.</p>
+                    )}
+                  </div>
+
+                  <div className="rounded-lg border bg-background p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Measured movement signals</p>
+                    <div className="mt-2 space-y-2">
+                      {Object.entries(result.features).map(([key, metric]) => (
+                        <div
+                          key={key}
+                          className={`grid grid-cols-[1fr_auto] items-center gap-2 text-xs ${metric.suppressed ? "opacity-45" : ""}`}
+                        >
+                          <div>
+                            <p className="font-medium">{formatDomainLabel(key)}</p>
+                            {metric.limitedReason && (
+                              <p className="text-[11px] text-muted-foreground">{metric.limitedReason}</p>
+                            )}
+                          </div>
+                          <p className="font-mono tabular-nums">
+                            {metric.suppressed ? "-" : `${metric.value}${metric.unit ? ` ${metric.unit}` : ""}`}
+                            {!metric.suppressed && (
+                              <span className="ml-1 text-muted-foreground">({Math.round(metric.confidence * 100)}%)</span>
+                            )}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {hasTrace && hasVideo && videoUrl ? (
+                  <AnnotatedVideoPlayer
+                    trace={result.trace!}
+                    videoUrl={videoUrl}
+                    jumpToFrameIndex={jumpToFrameIndex}
+                    audience="clinician"
+                    showAdvancedControls={false}
+                  />
+                ) : hasTrace ? (
+                  <p className="text-xs text-muted-foreground">
+                    Trace is present, but source video is unavailable in local storage.
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Full video evidence requires an analysis trace.
+                  </p>
+                )}
+
+                {hasTrace && (
+                  <>
+                    <EventTimeline
+                      trace={result.trace!}
+                      onJumpToFrame={(frameIndex: number) => setJumpToFrameIndex(frameIndex)}
+                    />
+                    {keyFrames && (
+                      <KeyFrameGallery
+                        keyFrames={keyFrames}
+                        trace={result.trace!}
+                        videoUrl={videoUrl}
+                        renderMode="timestamps-only"
+                        onFrameClick={(frameIndex: number) => setJumpToFrameIndex(frameIndex)}
+                      />
+                    )}
+                  </>
+                )}
+
+                {hasTrace && <AnalysisTracePanel trace={result.trace!} concernEvidence={concernEvidence} />}
+                <HowAnalysisWorksPanel result={result} />
+              </div>
+            </details>
+
+            <div className="print-only rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
+              <p className="font-semibold uppercase tracking-wide">Appendix note</p>
+              <p className="mt-2">
+                Advanced evidence panels are interactive in digital view and collapsed by default.
+                Use digital view for frame-level review.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="print-section print-hidden">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">8. Handoff Actions</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-xs text-muted-foreground">
-              Use these actions to finish handoff: print or save as PDF, copy the local link, and add context if needed.
+              Use these controls to complete sharing and documentation.
             </p>
 
             <div className="rounded-lg border bg-muted/20 p-3">
@@ -550,11 +690,11 @@ export default function ClinicianResultPage() {
                 </Button>
               </div>
               <p className="mt-2 text-xs text-muted-foreground">
-                Direct PDF export is not available in this local session. Use Print packet, then choose
+                Direct PDF export is unavailable in this local session. Use Print packet, then choose
                 Save as PDF in your browser print dialog.
               </p>
               <p className="text-xs text-muted-foreground">
-                Links and notes stay in this browser session until server-backed packet storage is added.
+                Links and notes remain in this browser session until server-backed packet storage is added.
               </p>
               {shareLinkStatus && <p className="mt-1 text-xs text-primary">{shareLinkStatus}</p>}
             </div>
@@ -612,7 +752,7 @@ export default function ClinicianResultPage() {
 
         <Card className="print-section">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">7. Clinician note (local)</CardTitle>
+            <CardTitle className="text-sm">9. Clinician Note (local)</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-xs text-muted-foreground print-hidden">

@@ -6,6 +6,7 @@ import {
   Video,
   Camera,
   Upload,
+  ChevronDown,
   CheckCircle2,
   XCircle,
   ArrowRight,
@@ -20,7 +21,17 @@ import {
   Card,
   CardContent,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { storeVideo } from "@/lib/session/videoStore";
 import { getApprovedHeroClip, getHeroClipDefinition } from "@/lib/demo/heroManifest";
 import { runCapturePreflight, type CapturePreflightResult } from "@/lib/quality/capturePreflight";
@@ -42,6 +53,106 @@ const QUICK_CHECKLIST = [
   "At least 4-6 clear steps",
   "Camera held still at about waist height",
 ];
+
+const FALLS_FREQUENCY_OPTIONS = [
+  "Never or rarely",
+  "A few times a month",
+  "Weekly",
+  "Daily or almost daily",
+  "Not sure",
+] as const;
+
+type ClinicianContextDraft = {
+  caregiverMainConcern: string;
+  symptomDuration: string;
+  fallsFrequency: string;
+  recentTherapyChanges: string;
+  recentSurgeryInterventionChanges: string;
+  assistiveDeviceSupport: string;
+  priorDiagnosisOrSpecialistReview: string;
+  correctedAge: string;
+};
+
+type ClinicianContextPayload = {
+  caregiverMainConcern: string | null;
+  symptomDuration: string | null;
+  fallsFrequency: string | null;
+  recentTherapyChanges: string | null;
+  recentSurgeryInterventionChanges: string | null;
+  assistiveDeviceSupport: string | null;
+  priorDiagnosisOrSpecialistReview: string | null;
+  correctedAge: string | null;
+};
+
+const EMPTY_CONTEXT_DRAFT: ClinicianContextDraft = {
+  caregiverMainConcern: "",
+  symptomDuration: "",
+  fallsFrequency: "",
+  recentTherapyChanges: "",
+  recentSurgeryInterventionChanges: "",
+  assistiveDeviceSupport: "",
+  priorDiagnosisOrSpecialistReview: "",
+  correctedAge: "",
+};
+
+function toTrimmedOrNull(value: string): string | null {
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function readSavedContextDraft(): ClinicianContextDraft {
+  if (typeof window === "undefined") {
+    return EMPTY_CONTEXT_DRAFT;
+  }
+
+  try {
+    const raw =
+      sessionStorage.getItem("gaitbridge_session") ??
+      sessionStorage.getItem("pedigrowth_session");
+    if (!raw) return EMPTY_CONTEXT_DRAFT;
+
+    const parsed = JSON.parse(raw) as {
+      clinicianContext?: Partial<ClinicianContextPayload>;
+    };
+    const saved = parsed.clinicianContext;
+    if (!saved) return EMPTY_CONTEXT_DRAFT;
+
+    return {
+      caregiverMainConcern: saved.caregiverMainConcern ?? "",
+      symptomDuration: saved.symptomDuration ?? "",
+      fallsFrequency: saved.fallsFrequency ?? "",
+      recentTherapyChanges: saved.recentTherapyChanges ?? "",
+      recentSurgeryInterventionChanges: saved.recentSurgeryInterventionChanges ?? "",
+      assistiveDeviceSupport: saved.assistiveDeviceSupport ?? "",
+      priorDiagnosisOrSpecialistReview: saved.priorDiagnosisOrSpecialistReview ?? "",
+      correctedAge: saved.correctedAge ?? "",
+    };
+  } catch {
+    return EMPTY_CONTEXT_DRAFT;
+  }
+}
+
+function buildClinicianContextPayload(
+  draft: ClinicianContextDraft,
+): ClinicianContextPayload | undefined {
+  const payload: ClinicianContextPayload = {
+    caregiverMainConcern: toTrimmedOrNull(draft.caregiverMainConcern),
+    symptomDuration: toTrimmedOrNull(draft.symptomDuration),
+    fallsFrequency: toTrimmedOrNull(draft.fallsFrequency),
+    recentTherapyChanges: toTrimmedOrNull(draft.recentTherapyChanges),
+    recentSurgeryInterventionChanges: toTrimmedOrNull(draft.recentSurgeryInterventionChanges),
+    assistiveDeviceSupport: toTrimmedOrNull(draft.assistiveDeviceSupport),
+    priorDiagnosisOrSpecialistReview: toTrimmedOrNull(draft.priorDiagnosisOrSpecialistReview),
+    correctedAge: toTrimmedOrNull(draft.correctedAge),
+  };
+
+  const hasAtLeastOneValue = Object.values(payload).some((value) => value !== null);
+  return hasAtLeastOneValue ? payload : undefined;
+}
+
+function hasAnyContextValue(draft: ClinicianContextDraft): boolean {
+  return Object.values(draft).some((value) => value.trim().length > 0);
+}
 
 export default function CapturePage() {
   const router = useRouter();
@@ -68,6 +179,12 @@ export default function CapturePage() {
   const [isRunningPreflight, setIsRunningPreflight] = useState(false);
   const [preflightResult, setPreflightResult] = useState<CapturePreflightResult | null>(null);
   const [preflightError, setPreflightError] = useState<string | null>(null);
+  const [clinicianContext, setClinicianContext] = useState<ClinicianContextDraft>(() =>
+    readSavedContextDraft(),
+  );
+  const [isClinicianContextOpen, setIsClinicianContextOpen] = useState(() =>
+    hasAnyContextValue(readSavedContextDraft()),
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
   const heroClip = getHeroClipDefinition();
   const approvedHeroClip = getApprovedHeroClip();
@@ -134,6 +251,16 @@ export default function CapturePage() {
     setActiveTab("review");
   }
 
+  function updateContextField<K extends keyof ClinicianContextDraft>(
+    key: K,
+    value: ClinicianContextDraft[K],
+  ) {
+    setClinicianContext((previous) => ({
+      ...previous,
+      [key]: value,
+    }));
+  }
+
   async function handleUseHeroClip() {
     if (!approvedHeroClip) return;
 
@@ -182,6 +309,8 @@ export default function CapturePage() {
 
       // Update session with video metadata + sessionId
       const existing = JSON.parse(sessionStorage.getItem("gaitbridge_session") || "{}");
+      const persistedContext = buildClinicianContextPayload(clinicianContext);
+
       sessionStorage.setItem("gaitbridge_session", JSON.stringify({
         ...existing,
         sessionId,
@@ -196,6 +325,7 @@ export default function CapturePage() {
           size: videoFile.size,
           capturedAt: new Date().toISOString(),
         },
+        clinicianContext: persistedContext,
       }));
 
       router.push("/analyzing");
@@ -495,6 +625,159 @@ export default function CapturePage() {
                   preflightResult && (
                     <p className="text-[11px] text-muted-foreground">Preflight passed. Continue to analysis when ready.</p>
                   )
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-0">
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between px-4 py-4 text-left"
+                  onClick={() => setIsClinicianContextOpen((value) => !value)}
+                  aria-expanded={isClinicianContextOpen}
+                  aria-controls="clinician-context-dropdown"
+                >
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                      Optional clinician context
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Add extra intake details for clinician packet section 2.
+                    </p>
+                  </div>
+                  <ChevronDown
+                    className={`h-4 w-4 text-muted-foreground transition-transform ${
+                      isClinicianContextOpen ? "rotate-180" : "rotate-0"
+                    }`}
+                  />
+                </button>
+
+                {isClinicianContextOpen && (
+                  <div id="clinician-context-dropdown" className="space-y-3 border-t border-border/60 p-4">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="caregiver-main-concern" className="text-xs font-medium">
+                        Caregiver main concern
+                      </Label>
+                      <Textarea
+                        id="caregiver-main-concern"
+                        value={clinicianContext.caregiverMainConcern}
+                        onChange={(event) => updateContextField("caregiverMainConcern", event.target.value)}
+                        placeholder="What is worrying you most about your child's walking?"
+                        rows={2}
+                        maxLength={300}
+                      />
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="symptom-duration" className="text-xs font-medium">
+                          When first noticed / symptom duration
+                        </Label>
+                        <Input
+                          id="symptom-duration"
+                          value={clinicianContext.symptomDuration}
+                          onChange={(event) => updateContextField("symptomDuration", event.target.value)}
+                          placeholder="e.g., noticed 3 months ago"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium">Falls frequency</Label>
+                        <Select
+                          value={clinicianContext.fallsFrequency || undefined}
+                          onValueChange={(value) =>
+                            updateContextField("fallsFrequency", value ?? "")
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select if known" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {FALLS_FREQUENCY_OPTIONS.map((option) => (
+                              <SelectItem key={option} value={option}>
+                                {option}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="therapy-changes" className="text-xs font-medium">
+                          Recent therapy changes
+                        </Label>
+                        <Textarea
+                          id="therapy-changes"
+                          value={clinicianContext.recentTherapyChanges}
+                          onChange={(event) => updateContextField("recentTherapyChanges", event.target.value)}
+                          placeholder="e.g., started weekly PT in January"
+                          rows={2}
+                          maxLength={240}
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="surgery-changes" className="text-xs font-medium">
+                          Recent surgery/intervention changes
+                        </Label>
+                        <Textarea
+                          id="surgery-changes"
+                          value={clinicianContext.recentSurgeryInterventionChanges}
+                          onChange={(event) =>
+                            updateContextField("recentSurgeryInterventionChanges", event.target.value)
+                          }
+                          placeholder="e.g., botulinum injection 2 months ago"
+                          rows={2}
+                          maxLength={240}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="assistive-support" className="text-xs font-medium">
+                          Assistive device / walking support
+                        </Label>
+                        <Input
+                          id="assistive-support"
+                          value={clinicianContext.assistiveDeviceSupport}
+                          onChange={(event) => updateContextField("assistiveDeviceSupport", event.target.value)}
+                          placeholder="e.g., ankle-foot orthosis, walker"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="corrected-age" className="text-xs font-medium">
+                          Corrected age (if relevant)
+                        </Label>
+                        <Input
+                          id="corrected-age"
+                          value={clinicianContext.correctedAge}
+                          onChange={(event) => updateContextField("correctedAge", event.target.value)}
+                          placeholder="e.g., 22 months corrected"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor="prior-diagnosis" className="text-xs font-medium">
+                        Prior diagnosis / prior specialist review
+                      </Label>
+                      <Textarea
+                        id="prior-diagnosis"
+                        value={clinicianContext.priorDiagnosisOrSpecialistReview}
+                        onChange={(event) =>
+                          updateContextField("priorDiagnosisOrSpecialistReview", event.target.value)
+                        }
+                        placeholder="Optional diagnosis or specialist context"
+                        rows={2}
+                        maxLength={300}
+                      />
+                    </div>
+                  </div>
                 )}
               </CardContent>
             </Card>

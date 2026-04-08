@@ -36,10 +36,22 @@ interface QualitySnapshot {
   suppressedMetrics: string[];
 }
 
+interface IntakeContextSnapshot {
+  caregiverMainConcern?: string | null;
+  symptomDuration?: string | null;
+  fallsFrequency?: string | null;
+  recentTherapyChanges?: string | null;
+  recentSurgeryInterventionChanges?: string | null;
+  assistiveDeviceSupport?: string | null;
+  priorDiagnosisOrSpecialistReview?: string | null;
+  correctedAge?: string | null;
+}
+
 export interface BuildReportBundleInput {
   assessmentId: string;
   nickname: string;
   ageMonths: number;
+  intakeContext?: IntakeContextSnapshot;
   analyzedAt: string;
   concerns: ConcernSnapshot;
   quality: QualitySnapshot;
@@ -72,6 +84,12 @@ function enforceSafeLanguage(text: string): string {
   const safety = checkLanguageSafety(cleaned);
   if (safety.safe) return cleaned;
   return fallbackSafeText();
+}
+
+function normalizeContextField(value: string | null | undefined): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function overallObservation(level: string): string {
@@ -219,6 +237,18 @@ export function buildReportBundle(input: BuildReportBundleInput): ReportBundle {
       captureView: input.quality.cameraAngle,
       followupPriority: input.concerns.followupPriority,
       analysisResult: input.quality.result,
+      caregiverMainConcern: normalizeContextField(input.intakeContext?.caregiverMainConcern),
+      symptomDuration: normalizeContextField(input.intakeContext?.symptomDuration),
+      fallsFrequency: normalizeContextField(input.intakeContext?.fallsFrequency),
+      recentTherapyChanges: normalizeContextField(input.intakeContext?.recentTherapyChanges),
+      recentSurgeryInterventionChanges: normalizeContextField(
+        input.intakeContext?.recentSurgeryInterventionChanges,
+      ),
+      assistiveDeviceSupport: normalizeContextField(input.intakeContext?.assistiveDeviceSupport),
+      priorDiagnosisOrSpecialistReview: normalizeContextField(
+        input.intakeContext?.priorDiagnosisOrSpecialistReview,
+      ),
+      correctedAge: normalizeContextField(input.intakeContext?.correctedAge),
     },
     qualitySummary: {
       confidenceMultiplierPct: Math.round(input.quality.confidenceMultiplier * 100),
