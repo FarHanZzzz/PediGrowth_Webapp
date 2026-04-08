@@ -93,6 +93,22 @@ function formatDomainLabel(domain: string): string {
   return domain.charAt(0).toUpperCase() + domain.slice(1).replace(/([A-Z])/g, " $1");
 }
 
+function formatFieldLabel(field: string): string {
+  return field
+    .replace(/([A-Z])/g, " $1")
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatUnknownValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "—";
+  if (Array.isArray(value)) return value.length > 0 ? value.map((item) => String(item)).join(", ") : "none";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
 export default function ResultsPage() {
   const params = useParams();
   const router = useRouter();
@@ -245,6 +261,34 @@ export default function ResultsPage() {
       handoffText: bundle.handoffText,
     };
   }, [result]);
+
+  const clinicianDerived = useMemo(() => {
+    if (!reportBundle) return null;
+
+    const profileSummary = reportBundle.clinician.profileSummary as Record<string, unknown>;
+    const intakeContext = reportBundle.clinician.intakeContext as Record<string, unknown>;
+    const qualitySummary = reportBundle.clinician.qualitySummary as Record<string, unknown>;
+    const concernDomains = reportBundle.clinician.concernDomains as Record<string, unknown>;
+    const metricsTable = reportBundle.clinician.metricsTable as Record<string, unknown>;
+
+    const assessedDomains = Array.isArray(concernDomains.assessedDomains)
+      ? concernDomains.assessedDomains.map((domain) => String(domain))
+      : [];
+    const suppressedDomains = Array.isArray(concernDomains.suppressedDomains)
+      ? concernDomains.suppressedDomains.map((domain) => String(domain))
+      : [];
+    const metricRows = Object.entries(metricsTable);
+
+    return {
+      profileSummary,
+      intakeContext,
+      qualitySummary,
+      concernDomains,
+      assessedDomains,
+      suppressedDomains,
+      metricRows,
+    };
+  }, [reportBundle]);
 
   function downloadClinicianPacket() {
     if (!reportBundle) return;
@@ -743,6 +787,42 @@ export default function ResultsPage() {
 
         {activeTab === "clinician" && reportBundle && (
           <div className="space-y-4">
+            {clinicianDerived && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">Quick Clinician Scan (120 seconds)</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2 text-xs text-muted-foreground">
+                  <p>
+                    <strong>Overall concern:</strong>{" "}
+                    {formatUnknownValue(clinicianDerived.concernDomains.overallLevel)}
+                  </p>
+                  <p>
+                    <strong>Follow-up priority:</strong>{" "}
+                    {formatUnknownValue(clinicianDerived.concernDomains.followupPriority)}
+                  </p>
+                  <p>
+                    <strong>Assessed domains:</strong>{" "}
+                    {clinicianDerived.assessedDomains.length > 0
+                      ? clinicianDerived.assessedDomains.map(formatDomainLabel).join(", ")
+                      : "none"}
+                  </p>
+                  <p>
+                    <strong>Suppressed domains:</strong>{" "}
+                    {clinicianDerived.suppressedDomains.length > 0
+                      ? clinicianDerived.suppressedDomains.map(formatDomainLabel).join(", ")
+                      : "none"}
+                  </p>
+                  <p>
+                    <strong>Confidence context:</strong>{" "}
+                    {formatUnknownValue(
+                      clinicianDerived.qualitySummary.confidenceNotes ?? result.quality.confidenceNotes,
+                    )}
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm">Clinician Packet</CardTitle>
@@ -754,6 +834,77 @@ export default function ResultsPage() {
                 <p><strong>Created:</strong> {new Date(reportBundle.clinician.createdAt).toLocaleString()}</p>
               </CardContent>
             </Card>
+
+            {clinicianDerived && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">Clinical Details</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4 text-xs">
+                  <div className="space-y-1.5">
+                    <p className="font-semibold text-muted-foreground">Profile Summary</p>
+                    {Object.entries(clinicianDerived.profileSummary).map(([key, value]) => (
+                      <div key={`profile_${key}`} className="flex items-start justify-between gap-3">
+                        <span className="text-muted-foreground">{formatFieldLabel(key)}</span>
+                        <span className="text-right">{formatUnknownValue(value)}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <p className="font-semibold text-muted-foreground">Intake Context</p>
+                    {Object.entries(clinicianDerived.intakeContext).map(([key, value]) => (
+                      <div key={`intake_${key}`} className="flex items-start justify-between gap-3">
+                        <span className="text-muted-foreground">{formatFieldLabel(key)}</span>
+                        <span className="text-right">{formatUnknownValue(value)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {clinicianDerived && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">Structured Metrics</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2 text-xs">
+                  {clinicianDerived.metricRows.length === 0 ? (
+                    <p className="text-muted-foreground">No metric rows available.</p>
+                  ) : (
+                    clinicianDerived.metricRows.map(([metricName, raw]) => {
+                      const metric = (raw ?? {}) as {
+                        value?: number | null;
+                        unit?: string | null;
+                        confidencePct?: number;
+                        assessed?: boolean;
+                        limitation?: string | null;
+                      };
+
+                      const valueText = metric.value === null || metric.value === undefined
+                        ? "—"
+                        : `${metric.value}${metric.unit ? ` ${metric.unit}` : ""}`;
+
+                      return (
+                        <div key={metricName} className="rounded-md border p-2.5">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="font-medium">{formatFieldLabel(metricName)}</p>
+                            <p className="tabular-nums">{valueText}</p>
+                          </div>
+                          <p className="mt-1 text-muted-foreground">
+                            Confidence: {metric.confidencePct ?? 0}% · {metric.assessed ? "Assessed" : "Suppressed"}
+                          </p>
+                          {metric.limitation && (
+                            <p className="mt-1 text-muted-foreground">Limitation: {metric.limitation}</p>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
             <Card>
               <CardHeader className="pb-2">
@@ -830,6 +981,13 @@ export default function ResultsPage() {
                         Expires: {new Date(shareExpiresAt).toLocaleString()}
                       </p>
                     )}
+                    <div className="mt-2">
+                      <a href={shareUrl} target="_blank" rel="noreferrer">
+                        <Button variant="secondary" size="sm" className="text-xs">
+                          Open Shared View
+                        </Button>
+                      </a>
+                    </div>
                   </div>
                 )}
               </CardContent>
