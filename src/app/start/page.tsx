@@ -86,10 +86,23 @@ export default function QuickGatePage() {
   const [nickname, setNickname] = useState(saved.nickname);
   const [error, setError] = useState("");
 
-  const canProceed = consent && ageMonths.trim() !== "" && walking !== "";
-
   function handleStart() {
     setError("");
+
+    if (!consent) {
+      setError("Please confirm consent to continue.");
+      return;
+    }
+
+    if (ageMonths.trim() === "") {
+      setError("Please enter age in months.");
+      return;
+    }
+
+    if (walking === "") {
+      setError("Please select whether your child walks independently.");
+      return;
+    }
 
     const age = Number(ageMonths);
     if (isNaN(age) || age < 0 || age > 216) {
@@ -104,22 +117,26 @@ export default function QuickGatePage() {
       caregiverIndicatesCannotWalk: walking === "no",
     });
 
-    // Store minimal session data
-    sessionStorage.setItem("pedigrowth_session", JSON.stringify({
-      nickname: nickname.trim() || "your child",
-      ageMonths: age,
-      walking,
-      route: decision.route,
-      routeReason: decision.reason,
-      policyVersion: decision.policyVersion,
-      consentTimestamp: new Date().toISOString(),
-    }));
+    try {
+      // Store minimal session data
+      sessionStorage.setItem("pedigrowth_session", JSON.stringify({
+        nickname: nickname.trim() || "your child",
+        ageMonths: age,
+        walking,
+        route: decision.route,
+        routeReason: decision.reason,
+        policyVersion: decision.policyVersion,
+        consentTimestamp: new Date().toISOString(),
+      }));
 
-    // Route silently — no intermediate routing page
-    if (decision.route === "route_a") {
-      router.push("/concern");
-    } else {
-      router.push("/capture");
+      // Route silently — no intermediate routing page
+      if (decision.route === "route_a") {
+        router.push("/concern");
+      } else {
+        router.push("/capture");
+      }
+    } catch {
+      setError("Unable to start in this browser right now. Please enable site storage and try again.");
     }
   }
 
@@ -209,14 +226,34 @@ export default function QuickGatePage() {
             </div>
 
             {/* Consent — compact */}
-            <div className="flex items-start gap-3 rounded-2xl bg-surface-container-low p-4">
+            <div
+              className="flex items-start gap-3 rounded-2xl bg-surface-container-low p-4 cursor-pointer"
+              role="button"
+              tabIndex={0}
+              aria-pressed={consent}
+              onClick={() => setConsent((prev) => !prev)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setConsent((prev) => !prev);
+                }
+              }}
+            >
               <Checkbox
                 id="consent"
                 checked={consent}
-                onCheckedChange={(v) => setConsent(v === true)}
+                onCheckedChange={(checked) => setConsent(checked)}
+                onClick={(event) => event.stopPropagation()}
                 className="mt-0.5"
               />
-              <Label htmlFor="consent" className="text-xs leading-relaxed cursor-pointer text-muted-foreground">
+              <Label
+                htmlFor="consent"
+                className="text-xs leading-relaxed cursor-pointer text-muted-foreground"
+                onClick={(event) => {
+                  event.preventDefault();
+                  setConsent((prev) => !prev);
+                }}
+              >
                 I understand Pedi-Growth is a support tool that does not diagnose conditions.
                 Video is processed on my device and not stored unless I choose to save.
               </Label>
@@ -230,7 +267,6 @@ export default function QuickGatePage() {
             {/* Start button */}
             <Button
               onClick={handleStart}
-              disabled={!canProceed}
               size="lg"
               className="touch-target w-full gap-2 text-base font-semibold"
               id="quickgate-start"
