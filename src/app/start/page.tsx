@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Play,
@@ -78,12 +78,21 @@ function readSavedSession(): {
 
 export default function QuickGatePage() {
   const router = useRouter();
-  const saved = readSavedSession();
-  const [consent, setConsent] = useState(saved.consent);
-  const [ageMonths, setAgeMonths] = useState(saved.ageMonths);
-  const [walking, setWalking] = useState<WalkingAnswer>(saved.walking);
-  const [nickname, setNickname] = useState(saved.nickname);
+  // Keep SSR and first client render deterministic to avoid hydration mismatches.
+  // Persisted session values are restored only after mount.
+  const [consent, setConsent] = useState(false);
+  const [ageMonths, setAgeMonths] = useState("");
+  const [walking, setWalking] = useState<WalkingAnswer>("");
+  const [nickname, setNickname] = useState("");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const saved = readSavedSession();
+    setConsent(saved.consent);
+    setAgeMonths(saved.ageMonths);
+    setWalking(saved.walking);
+    setNickname(saved.nickname);
+  }, []);
 
   const canProceed = consent && ageMonths.trim() !== "" && walking !== "";
 

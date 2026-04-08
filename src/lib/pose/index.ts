@@ -25,7 +25,7 @@ export async function createPoseProvider(
 
 /**
  * Extract landmarks from all frames of a video element.
- * Processes at ~10fps equivalent for performance.
+ * Processes at target FPS for the FULL playable video duration.
  */
 export async function extractLandmarkSequence(
   provider: PoseProvider,
@@ -33,10 +33,14 @@ export async function extractLandmarkSequence(
   targetFps: number = 10,
 ): Promise<LandmarkFrame[]> {
   const frames: LandmarkFrame[] = [];
-  const duration = Math.min(video.duration, 15); // Cap at 15 seconds
-  const interval = 1 / targetFps;
+  const duration = resolveExtractionDuration(video.duration);
+  if (duration <= 0) return frames;
 
-  for (let time = 0; time < duration; time += interval) {
+  const interval = 1 / targetFps;
+  const sampleCount = Math.max(1, Math.floor(duration * targetFps));
+
+  for (let sampleIdx = 0; sampleIdx <= sampleCount; sampleIdx++) {
+    const time = Math.min(sampleIdx * interval, duration);
     video.currentTime = time;
 
     // Wait for seek to complete
@@ -49,4 +53,11 @@ export async function extractLandmarkSequence(
   }
 
   return frames;
+}
+
+export function resolveExtractionDuration(videoDurationSeconds: number): number {
+  if (!Number.isFinite(videoDurationSeconds) || videoDurationSeconds <= 0) {
+    return 0;
+  }
+  return videoDurationSeconds;
 }

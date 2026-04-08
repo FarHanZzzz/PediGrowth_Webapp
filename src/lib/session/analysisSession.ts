@@ -17,7 +17,12 @@ import { correctLRSwaps } from '@/lib/analysis/swapCorrection';
 import { extractGaitFeatures } from '@/lib/analysis/extractGaitFeatures';
 import { detectFootStrikes, buildGaitCycles } from '@/lib/analysis/cycleDetection';
 import { computeConcernProfile, type ComputedConcernResult } from '@/lib/scoring/computeConcernProfile';
-import { predictFromLandmarks, type LandmarkFrame as BackendLandmarkFrame, type XGBoostPrediction } from '@/lib/api/gaitPredictClient';
+import {
+  checkPipelineHealth,
+  predictFromLandmarks,
+  type LandmarkFrame as BackendLandmarkFrame,
+  type XGBoostPrediction,
+} from '@/lib/api/gaitPredictClient';
 import { POSE } from '@/lib/pose/poseTypes';
 import { getVideo, deleteVideo } from './videoStore';
 import { buildAnalysisTrace } from '@/lib/trace/buildAnalysisTrace';
@@ -31,6 +36,7 @@ import {
   type RunProvenance,
   type RunSourceType,
 } from './runProvenance';
+import { shouldAdoptRecoveryPass, shouldRunRecoveryPass } from './trackingRecovery';
 import { buildReportBundle } from '@/lib/reports';
 
 export type PipelineStage =
@@ -341,7 +347,34 @@ export async function runAnalysisPipeline(
           video.oncanplay = () => resolve();
         });
 
-        const rawFrames = await extractLandmarkSequence(provider, video, sampleFps);
+        let rawFrames = await extractLandmarkSequence(provider, video, sampleFps);
+
+        // Recovery pass for weak detections: retry with a denser/safer sampling profile
+        // and keep whichever pass yields the better frame-level detection rate.
+        const initialDetectedFrames = countDetectedFrames(rawFrames);
+        const initialDetectionRate = rawFrames.length > 0 ? initialDetectedFrames / rawFrames.length : 0;
+        const shouldRetryExtraction = shouldRunRecoveryPass(
+          initialDetectionRate,
+          assessment.frameUsabilityPct,
+        );
+
+        if (shouldRetryExtraction) {
+          const retryFps = clamp(sampleFps + 2, 10, 20);
+          if (retryFps !== sampleFps) {
+            if ('resetTimestampSequence' in provider) {
+              (provider as { resetTimestampSequence: () => void }).resetTimestampSequence();
+            }
+
+            const retryFrames = await extractLandmarkSequence(provider, video, retryFps);
+            const retryDetectedFrames = countDetectedFrames(retryFrames);
+            const retryDetectionRate = retryFrames.length > 0 ? retryDetectedFrames / retryFrames.length : 0;
+
+            if (shouldAdoptRecoveryPass(initialDetectionRate, retryDetectionRate)) {
+              rawFrames = retryFrames;
+              sampleFps = retryFps;
+            }
+          }
+        }
         report(3, 1);
 
         if (rawFrames.length === 0) {
@@ -423,24 +456,34 @@ export async function runAnalysisPipeline(
         };
 
         try {
-          const backendResult = await predictFromLandmarks(backendFrames, {
-            Age: Math.max(1, Math.round(ageMonths / 12)),
-          });
-
-          if (backendResult?.success && backendResult.predictions) {
-            backendInference = {
-              attempted: true,
-              available: true,
-              error: null,
-              predictions: backendResult.predictions,
-            };
-          } else if (backendResult?.error) {
+          const backendHealthy = await checkPipelineHealth();
+          if (!backendHealthy) {
             backendInference = {
               attempted: true,
               available: false,
-              error: backendResult.error,
+              error: 'Pipeline health check failed or backend is unreachable.',
               predictions: null,
             };
+          } else {
+            const backendResult = await predictFromLandmarks(backendFrames, {
+              Age: Math.max(1, Math.round(ageMonths / 12)),
+            });
+
+            if (backendResult?.success && backendResult.predictions) {
+              backendInference = {
+                attempted: true,
+                available: true,
+                error: null,
+                predictions: backendResult.predictions,
+              };
+            } else if (backendResult?.error) {
+              backendInference = {
+                attempted: true,
+                available: false,
+                error: backendResult.error,
+                predictions: null,
+              };
+            }
           }
         } catch (backendErr) {
           backendInference = {
@@ -960,6 +1003,12 @@ function computeTemporalStabilityScore(frames: LandmarkFrame[]): number {
   if (count === 0) return 0;
   const avgDelta = totalDelta / count;
   return clamp(1 - avgDelta * 7.5, 0, 1);
+}
+
+function countDetectedFrames(frames: LandmarkFrame[]): number {
+  return frames.filter((frame) =>
+    frame.landmarks.some((lm) => lm.visibility >= 0.5),
+  ).length;
 }
 
 function computeInferenceDecision(

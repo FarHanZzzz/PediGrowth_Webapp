@@ -66,7 +66,7 @@ pip install -r requirements-pipeline.txt
 uvicorn gait_pipeline.api:app --reload --port 8000
 ```
 
-The frontend proxies `/api/pipeline/*` to `http://localhost:8000` automatically via `next.config.ts`.
+The frontend uses Next.js server API routes under `/api/pipeline/*` to call the Python backend with input validation, timeout protection, and graceful fallback errors.
 
 ### Environment Variables
 
