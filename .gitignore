@@ -44,6 +44,8 @@ dataset/
 data/*
 !data/manifest.csv
 !data/training_reports/
+!data/robustness/
+!data/robustness/*.json
 
 # Unused video samples
 video/
