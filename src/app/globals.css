@@ -36,6 +36,17 @@
   --confidence-low: oklch(0.65 0.18 55);
   --route-a: oklch(0.65 0.12 250);
   --route-b: oklch(0.60 0.14 175);
+
+  /* Surface and state tokens used across UI components */
+  --primary-container: oklch(0.92 0.05 250);
+  --secondary-container: oklch(0.92 0.02 260);
+  --surface-container-low: oklch(0.96 0.008 260);
+  --surface-container-lowest: oklch(1 0 0);
+  --surface-variant: oklch(0.92 0.012 260);
+  --outline-variant: oklch(0.82 0.015 260);
+  --error-container: oklch(0.93 0.035 25);
+  --on-error-container: oklch(0.35 0.08 25);
+  --tertiary-fixed: oklch(0.9 0.03 320);
 }
 
 .dark {
@@ -58,6 +69,16 @@
   --border: oklch(0.28 0.02 260);
   --input: oklch(0.28 0.02 260);
   --ring: oklch(0.65 0.15 250);
+
+  --primary-container: oklch(0.32 0.08 250);
+  --secondary-container: oklch(0.26 0.03 260);
+  --surface-container-low: oklch(0.18 0.02 260);
+  --surface-container-lowest: oklch(0.14 0.02 260);
+  --surface-variant: oklch(0.24 0.02 260);
+  --outline-variant: oklch(0.34 0.02 260);
+  --error-container: oklch(0.32 0.08 25);
+  --on-error-container: oklch(0.9 0.03 25);
+  --tertiary-fixed: oklch(0.3 0.04 320);
 }
 
 @theme inline {
@@ -95,6 +116,16 @@
   --color-confidence-low: var(--confidence-low);
   --color-route-a: var(--route-a);
   --color-route-b: var(--route-b);
+
+  --color-primary-container: var(--primary-container);
+  --color-secondary-container: var(--secondary-container);
+  --color-surface-container-low: var(--surface-container-low);
+  --color-surface-container-lowest: var(--surface-container-lowest);
+  --color-surface-variant: var(--surface-variant);
+  --color-outline-variant: var(--outline-variant);
+  --color-error-container: var(--error-container);
+  --color-on-error-container: var(--on-error-container);
+  --color-tertiary-fixed: var(--tertiary-fixed);
 }
 
 @layer base {
@@ -112,6 +143,27 @@
   .touch-target {
     min-height: 44px;
     min-width: 44px;
+  }
+
+  .cta-gradient {
+    @apply bg-primary text-primary-foreground;
+    background-image: linear-gradient(
+      135deg,
+      color-mix(in oklch, var(--primary) 94%, black 6%) 0%,
+      color-mix(in oklch, var(--primary) 86%, white 14%) 100%
+    );
+  }
+
+  .ghost-outline {
+    @apply border border-border/70 bg-transparent;
+  }
+
+  .clinical-card {
+    @apply border border-border/60 bg-card shadow-[0_12px_32px_rgba(21,29,28,0.06)];
+  }
+
+  .clinical-layer {
+    @apply border border-border/50 bg-card/85 shadow-[0_12px_32px_rgba(21,29,28,0.06)];
   }
 }
 

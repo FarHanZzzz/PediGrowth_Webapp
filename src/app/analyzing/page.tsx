@@ -31,10 +31,16 @@ export default function AnalyzingPage() {
     if (pipelineRan.current) return;
     pipelineRan.current = true;
 
-    const raw = sessionStorage.getItem("pedigrowth_session");
+    const raw =
+      sessionStorage.getItem("gaitbridge_session") ??
+      sessionStorage.getItem("pedigrowth_session");
     if (!raw) {
       router.replace("/start");
       return;
+    }
+
+    if (!sessionStorage.getItem("gaitbridge_session")) {
+      sessionStorage.setItem("gaitbridge_session", raw);
     }
 
     const session = JSON.parse(raw);
@@ -70,7 +76,10 @@ export default function AnalyzingPage() {
       .then((result) => {
         // Store result in sessionStorage + IndexedDB for persistence
         const resultId = result.id;
-        sessionStorage.setItem(`pedigrowth_result_${resultId}`, JSON.stringify(result));
+        const serialized = JSON.stringify(result);
+        sessionStorage.setItem(`gaitbridge_result_${resultId}`, serialized);
+        // Backward compatibility for previously released readers.
+        sessionStorage.setItem(`pedigrowth_result_${resultId}`, serialized);
         saveResult(resultId, result).catch(() => {}); // fire-and-forget
 
         // Complete progress

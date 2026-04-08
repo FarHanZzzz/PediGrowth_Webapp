@@ -34,7 +34,9 @@ export default function ConcernPage() {
   const [childName] = useState(() => {
     if (typeof window === "undefined") return "your child";
     try {
-      const raw = sessionStorage.getItem("pedigrowth_session");
+      const raw =
+        sessionStorage.getItem("gaitbridge_session") ??
+        sessionStorage.getItem("pedigrowth_session");
       if (!raw) return "your child";
       const session = JSON.parse(raw);
       return session.nickname || "your child";
@@ -45,9 +47,16 @@ export default function ConcernPage() {
   const [flags, setFlags] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    const raw = sessionStorage.getItem("pedigrowth_session");
+    const raw =
+      sessionStorage.getItem("gaitbridge_session") ??
+      sessionStorage.getItem("pedigrowth_session");
     if (!raw) {
       router.replace("/start");
+      return;
+    }
+
+    if (!sessionStorage.getItem("gaitbridge_session")) {
+      sessionStorage.setItem("gaitbridge_session", raw);
     }
   }, [router]);
 

@@ -60,7 +60,9 @@ export function useResultViewModel(resultId: string): ResultViewModel {
   const [exportAvailable, setExportAvailable] = useState(false);
 
   useEffect(() => {
-    const raw = sessionStorage.getItem(`gaitbridge_result_${resultId}`);
+    const raw =
+      sessionStorage.getItem(`gaitbridge_result_${resultId}`) ??
+      sessionStorage.getItem(`pedigrowth_result_${resultId}`);
     if (!raw) {
       setResult(null);
       return;

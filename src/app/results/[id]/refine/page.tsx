@@ -129,7 +129,9 @@ export default function RefinePage() {
 
   const resultData = useMemo(() => {
     if (typeof window === "undefined") return null;
-    const raw = sessionStorage.getItem(`pedigrowth_result_${resultId}`);
+    const raw =
+      sessionStorage.getItem(`gaitbridge_result_${resultId}`) ??
+      sessionStorage.getItem(`pedigrowth_result_${resultId}`);
     if (!raw) return null;
     return JSON.parse(raw) as {
       concerns: {
@@ -192,11 +194,15 @@ export default function RefinePage() {
     };
 
     // Update the result with refinement context
-    const raw = sessionStorage.getItem(`pedigrowth_result_${resultId}`);
+    const raw =
+      sessionStorage.getItem(`gaitbridge_result_${resultId}`) ??
+      sessionStorage.getItem(`pedigrowth_result_${resultId}`);
     if (raw) {
       const result = JSON.parse(raw);
       result.refinement = refinement;
-      sessionStorage.setItem(`pedigrowth_result_${resultId}`, JSON.stringify(result));
+      const serialized = JSON.stringify(result);
+      sessionStorage.setItem(`gaitbridge_result_${resultId}`, serialized);
+      sessionStorage.setItem(`pedigrowth_result_${resultId}`, serialized);
     }
 
     // Back to results with refined context
