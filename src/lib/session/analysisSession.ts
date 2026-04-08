@@ -15,6 +15,7 @@ import { assessVideoQuality } from '@/lib/quality/assessVideoQuality';
 import { smoothLandmarks } from '@/lib/analysis/smoothing';
 import { correctLRSwaps } from '@/lib/analysis/swapCorrection';
 import { extractGaitFeatures } from '@/lib/analysis/extractGaitFeatures';
+import { validateGaitResults } from '@/lib/analysis/validateResults';
 import { detectFootStrikes, buildGaitCycles } from '@/lib/analysis/cycleDetection';
 import { computeConcernProfile, type ComputedConcernResult } from '@/lib/scoring/computeConcernProfile';
 import {
@@ -495,9 +496,24 @@ export async function runAnalysisPipeline(
         }
         report(4, 1);
 
-        // Stage 5: Score concerns
+        // Stage 5: Validate + Score concerns
         report(5);
-        const concerns = computeConcernProfile(features, assessment);
+
+        // Validate features against physiological bounds and evidence requirements
+        const footStrikesForValidation = detectFootStrikes(correctedFrames);
+        const validation = validateGaitResults(
+          features,
+          assessment.durationSeconds,
+          correctedFrames.length,
+          footStrikesForValidation.length,
+        );
+        if (validation.warnings.length > 0) {
+          console.log('[Pedi-Growth] Validation warnings:', validation.warnings);
+        }
+
+        // Use validated features for concern scoring
+        const validatedFeatures = validation.adjustedFeatures;
+        const concerns = computeConcernProfile(validatedFeatures, assessment);
         const inferenceDecision = computeInferenceDecision(concerns, backendInference);
         report(5, 1);
 
@@ -549,13 +565,13 @@ export async function runAnalysisPipeline(
 
           const metricKeys = Object.keys(METRIC_DISPLAY_NAMES);
           const featureMap: Record<string, { value: number; confidence: number; unit?: string }> = {
-            cadence: features.cadenceProxy,
-            stepSymmetry: features.stepTimingSymmetry,
-            frontalAsymmetry: features.frontalAsymmetry,
-            strideRegularity: features.strideRegularity,
-            lateralTrunkSway: features.lateralTrunkSway,
-            pathDeviation: features.pathDeviation,
-            baseOfSupport: features.baseOfSupport,
+            cadence: validatedFeatures.cadenceProxy,
+            stepSymmetry: validatedFeatures.stepTimingSymmetry,
+            frontalAsymmetry: validatedFeatures.frontalAsymmetry,
+            strideRegularity: validatedFeatures.strideRegularity,
+            lateralTrunkSway: validatedFeatures.lateralTrunkSway,
+            pathDeviation: validatedFeatures.pathDeviation,
+            baseOfSupport: validatedFeatures.baseOfSupport,
           };
 
           for (const key of metricKeys) {
@@ -630,13 +646,13 @@ export async function runAnalysisPipeline(
             confidenceNotes: assessment.confidenceNotes,
           },
           features: {
-            cadence: applySuppress(features.cadenceProxy, 'cadence'),
-            stepSymmetry: applySuppress(features.stepTimingSymmetry, 'stepSymmetry'),
-            frontalAsymmetry: applySuppress(features.frontalAsymmetry, 'frontalAsymmetry'),
-            strideRegularity: applySuppress(features.strideRegularity, 'strideRegularity'),
-            lateralTrunkSway: applySuppress(features.lateralTrunkSway, 'lateralTrunkSway'),
-            pathDeviation: applySuppress(features.pathDeviation, 'pathDeviation'),
-            baseOfSupport: applySuppress(features.baseOfSupport, 'baseOfSupport'),
+            cadence: applySuppress(validatedFeatures.cadenceProxy, 'cadence'),
+            stepSymmetry: applySuppress(validatedFeatures.stepTimingSymmetry, 'stepSymmetry'),
+            frontalAsymmetry: applySuppress(validatedFeatures.frontalAsymmetry, 'frontalAsymmetry'),
+            strideRegularity: applySuppress(validatedFeatures.strideRegularity, 'strideRegularity'),
+            lateralTrunkSway: applySuppress(validatedFeatures.lateralTrunkSway, 'lateralTrunkSway'),
+            pathDeviation: applySuppress(validatedFeatures.pathDeviation, 'pathDeviation'),
+            baseOfSupport: applySuppress(validatedFeatures.baseOfSupport, 'baseOfSupport'),
           },
           concerns: {
             asymmetry: concerns.asymmetry,
@@ -1055,17 +1071,22 @@ function computeInferenceDecision(
   };
 }
 
+// Calibrated probability mapping — based on screening-appropriate confidence levels.
+// These values are intentionally moderate because:
+// 1. Client-side metrics are computed from normalized MediaPipe coordinates, not calibrated lab equipment
+// 2. All concern levels pass through confidence gating, so reaching 'significant' already implies reasonable signal
+// 3. Over-confident probabilities would mislead hybrid fusion when backend is available
 function concernLevelToProbability(level: string): number {
   switch (level) {
     case 'significant':
-      return 0.82;
+      return 0.75;
     case 'moderate':
-      return 0.62;
+      return 0.55;
     case 'mild':
-      return 0.36;
+      return 0.30;
     case 'none':
     default:
-      return 0.14;
+      return 0.10;
   }
 }
 

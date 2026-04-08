@@ -5,7 +5,7 @@
 import type { ConcernLevel, FollowupPriority, ConcernProfile, GaitFeatureSet, QualityResult } from '@/lib/types';
 import concernThresholdsData from './concern-thresholds.json';
 
-const POLICY_VERSION = '0.4.0-graceful';
+const POLICY_VERSION = '0.5.0-validated';
 
 // ── Frontal-valid thresholds ──────────────────────────────────
 // Each threshold: value boundary for mild/moderate/significant.
@@ -25,17 +25,39 @@ export const CONCERN_THRESHOLDS = {
 };
 
 // Step timing symmetry is an input to asymmetry concern but not its own domain.
-// If stepTimingSymmetry < 0.85, it contributes to composite asymmetry concern.
+// If stepTimingSymmetry < threshold, it contributes to composite asymmetry concern.
 export const STEP_TIMING_CONCERN_THRESHOLD = concernThresholdsData.stepTimingConcernThreshold;
+
+// Ordered concern levels for comparison in confidence gating
+const CONCERN_ORDER: ConcernLevel[] = ['none', 'mild', 'moderate', 'significant'];
 
 function classifyConcern(
   value: number,
   thresholds: { mild: number; moderate: number; significant: number },
+  confidence: number = 1.0,
 ): ConcernLevel {
-  if (value >= thresholds.significant) return 'significant';
-  if (value >= thresholds.moderate) return 'moderate';
-  if (value >= thresholds.mild) return 'mild';
-  return 'none';
+  // Raw classification from value
+  let level: ConcernLevel;
+  if (value >= thresholds.significant) level = 'significant';
+  else if (value >= thresholds.moderate) level = 'moderate';
+  else if (value >= thresholds.mild) level = 'mild';
+  else level = 'none';
+
+  // CONFIDENCE GATING: Don't report high concern from low-confidence data.
+  // This prevents noisy metrics from generating misleading concern levels.
+  //   - confidence < 0.25 → cap at 'none' (not enough data to flag anything)
+  //   - confidence < 0.40 → cap at 'mild'
+  //   - confidence < 0.55 → cap at 'moderate'
+  //   - confidence >= 0.55 → allow 'significant'
+  if (confidence < 0.25) return 'none';
+  if (confidence < 0.40 && CONCERN_ORDER.indexOf(level) > CONCERN_ORDER.indexOf('none')) {
+    return 'mild';
+  }
+  if (confidence < 0.55 && level === 'significant') {
+    return 'moderate';
+  }
+
+  return level;
 }
 
 function countSignificant(levels: ConcernLevel[]): number {
@@ -63,28 +85,47 @@ export function scoreConcerns(
   progressionOverride?: 'improving' | 'stable' | 'worsening',
 ): Omit<ConcernProfile, 'id' | 'assessmentId' | 'createdAt'> {
   // ── Asymmetry concern: composite of frontalAsymmetry + step timing ──
-  let asymmetryLevel = classifyConcern(features.frontalAsymmetry.value, CONCERN_THRESHOLDS.asymmetry);
+  let asymmetryLevel = classifyConcern(
+    features.frontalAsymmetry.value,
+    CONCERN_THRESHOLDS.asymmetry,
+    features.frontalAsymmetry.confidence,
+  );
 
-  // Escalate if step timing is also asymmetric
+  // BIDIRECTIONAL step timing adjustment:
+  // - If step timing is ALSO asymmetric → escalate (corroborating evidence)
+  // - If step timing is VERY symmetric (>0.95) but visual asymmetry is flagged → de-escalate
+  //   (suggests the visual signal may be camera artifact, not real gait asymmetry)
   if (features.stepTimingSymmetry.value > 0 &&
       features.stepTimingSymmetry.value < STEP_TIMING_CONCERN_THRESHOLD &&
-      features.stepTimingSymmetry.confidence >= 0.3) {
+      features.stepTimingSymmetry.confidence >= 0.4) {
+    // Escalate: corroborating temporal asymmetry
     if (asymmetryLevel === 'none') asymmetryLevel = 'mild';
     else if (asymmetryLevel === 'mild') asymmetryLevel = 'moderate';
+  } else if (
+    features.stepTimingSymmetry.value > 0.95 &&
+    features.stepTimingSymmetry.confidence >= 0.4 &&
+    asymmetryLevel !== 'none'
+  ) {
+    // De-escalate: contradicting temporal evidence suggests visual signal may be noise
+    if (asymmetryLevel === 'significant') asymmetryLevel = 'moderate';
+    else if (asymmetryLevel === 'moderate') asymmetryLevel = 'mild';
   }
 
-  // ── Other frontal concerns ──
+  // ── Other frontal concerns (with confidence gating) ──
   const irregularRhythmLevel = classifyConcern(
     features.strideRegularity.value,
     CONCERN_THRESHOLDS.irregularRhythm,
+    features.strideRegularity.confidence,
   );
   const lateralInstabilityLevel = classifyConcern(
     features.lateralTrunkSway.value,
     CONCERN_THRESHOLDS.lateralInstability,
+    features.lateralTrunkSway.confidence,
   );
   const pathDeviationLevel = classifyConcern(
     features.pathDeviation.value,
     CONCERN_THRESHOLDS.pathDeviation,
+    features.pathDeviation.confidence,
   );
 
   const progressionStatus = progressionOverride ?? 'insufficient' as const;

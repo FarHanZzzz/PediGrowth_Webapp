@@ -179,6 +179,9 @@ export function evaluateQuality(metrics: QualityMetrics): QualityDecision {
   }
 
   // ── Determine usable vs suppressed metrics ──
+  // CRITICAL: In best_effort, ALL metrics are computed — we never hide data.
+  // The confidence multiplier handles reliability, not suppression.
+  // Suppressing metrics makes real patient pathology invisible.
 
   let usableMetrics: string[];
   let suppressedMetrics: string[];
@@ -186,25 +189,8 @@ export function evaluateQuality(metrics: QualityMetrics): QualityDecision {
   if (assessmentMode === 'cannot_assess') {
     usableMetrics = [];
     suppressedMetrics = ALL_METRICS;
-  } else if (assessmentMode === 'best_effort' && confidenceMultiplier < 0.5) {
-    // Very low quality best-effort: only most robust metrics
-    usableMetrics = ROBUST_METRICS.filter(m => {
-      // Suppress step symmetry if no gait cycles
-      if (m === 'stepSymmetry' && metrics.detectedGaitCycles < 1) return false;
-      return true;
-    });
-    suppressedMetrics = ALL_METRICS.filter(m => !usableMetrics.includes(m));
-  } else if (assessmentMode === 'best_effort') {
-    // Moderate best-effort: robust + some fragile if quality supports them
-    usableMetrics = [...ROBUST_METRICS];
-    if (metrics.bodyVisibility >= 0.4 && metrics.frameUsabilityPct >= 0.35) {
-      usableMetrics.push('lateralTrunkSway');
-    }
-    if (metrics.frameUsabilityPct >= 0.35) {
-      usableMetrics.push('pathDeviation');
-    }
-    suppressedMetrics = ALL_METRICS.filter(m => !usableMetrics.includes(m));
   } else {
+    // best_effort AND full_assessment: all metrics available
     usableMetrics = ALL_METRICS;
     suppressedMetrics = [];
   }

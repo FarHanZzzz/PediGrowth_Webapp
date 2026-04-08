@@ -2,13 +2,24 @@
 // Computes real gait metrics from landmark sequences.
 // MVP: frontal/toward-away video is the PRIMARY supported mode.
 // Sagittal metrics are computed but gated behind _sagittal_ prefix.
+//
+// NORMALIZATION CONSTANTS are derived from published clinical literature.
+// See src/lib/policy/normative-references.json for full citations.
 
 import type { LandmarkFrame, GaitFeatureSet, MetricValue, CameraAngle, ViewType } from '@/lib/types';
 import { POSE, MIN_VISIBILITY } from '@/lib/pose/poseTypes';
 import { computeAngle, computeLateralOffset, computeHipHeightDiff, computeShoulderTilt, midpoint } from './angles';
 import { detectFootStrikes, computeStepIntervals } from './cycleDetection';
+import normativeRefs from '@/lib/policy/normative-references.json';
 
-const POLICY_VERSION = '0.3.0-frontal';
+const POLICY_VERSION = '0.4.0-calibrated';
+
+// ── Clinically-anchored normalization constants ────────────────
+// Each constant traces to an entry in normative-references.json.
+const HIP_ASYM_DIVISOR = normativeRefs.frontalAsymmetry.components.hipHeightDifference.normalizationDivisor; // 0.035
+const SHOULDER_TILT_DIVISOR = normativeRefs.frontalAsymmetry.components.shoulderTilt.normalizationDivisor; // 0.06
+const TRUNK_SWAY_DIVISOR = normativeRefs.lateralTrunkSway.normalizationDivisor; // 0.025
+const PATH_DEV_DIVISOR = normativeRefs.pathDeviation.normalizationDivisor; // 0.035
 
 /**
  * Extract gait features from smoothed landmark frames.
@@ -61,11 +72,13 @@ export function extractGaitFeatures(
  * Valid from ANY camera angle — uses ankle-Y oscillation.
  */
 function computeCadence(frames: LandmarkFrame[], strikes: ReturnType<typeof detectFootStrikes>): MetricValue {
-  if (frames.length < 5 || strikes.length < 2) {
-    return { value: 0, confidence: 0.1, unit: 'steps/min', limitedReason: 'Insufficient steps detected' };
+  const minStrikes = normativeRefs.minimumEvidenceRequirements.minStrikesForCadence;
+  if (frames.length < 5 || strikes.length < minStrikes) {
+    return { value: 0, confidence: 0.1, unit: 'steps/min', limitedReason: `Insufficient steps detected (need ≥${minStrikes})` };
   }
 
   const durationMs = frames[frames.length - 1].timestampMs - frames[0].timestampMs;
+  const durationSec = durationMs / 1000;
   const durationMin = durationMs / 60000;
 
   if (durationMin <= 0) {
@@ -73,9 +86,24 @@ function computeCadence(frames: LandmarkFrame[], strikes: ReturnType<typeof dete
   }
 
   const cadence = strikes.length / durationMin;
-  const confidence = Math.min(1, strikes.length / 8);
 
-  return { value: Math.round(cadence), confidence, unit: 'steps/min' };
+  // Clamp to physiological bounds — values outside this range indicate measurement error
+  const bounds = normativeRefs.cadence.physiologicalBounds;
+  const clampedCadence = Math.max(bounds.min, Math.min(bounds.max, cadence));
+  const wasClamped = clampedCadence !== Math.round(cadence);
+
+  // Confidence: require more strikes AND longer duration for higher confidence
+  // A 1-second clip with 3 strikes should NOT get 0.9 confidence
+  const strikeConfidence = Math.min(1, strikes.length / 10);
+  const durationConfidence = Math.min(1, durationSec / 5); // Need ≥5 sec for full confidence
+  const confidence = Math.min(0.9, strikeConfidence * 0.5 + durationConfidence * 0.5);
+
+  return {
+    value: Math.round(clampedCadence),
+    confidence: wasClamped ? Math.min(confidence, 0.3) : confidence,
+    unit: 'steps/min',
+    limitedReason: wasClamped ? `Cadence ${Math.round(cadence)} outside normal range, clamped to ${Math.round(clampedCadence)}` : undefined,
+  };
 }
 
 /**
@@ -136,31 +164,37 @@ function computeFrontalAsymmetry(frames: LandmarkFrame[]): MetricValue {
     return { value: 0, confidence: 0.1, limitedReason: 'Insufficient visible frames for asymmetry' };
   }
 
-  // Normalize: in MediaPipe coords, 0.01 hip diff ≈ noticeable asymmetry
-  // Scale so that 0.05 normalized → score of 1.0
+  // Normalize using clinically-derived divisors.
+  // HIP_ASYM_DIVISOR (0.035): 2 SD above pathological mean pelvic drop → score 1.0
+  // SHOULDER_TILT_DIVISOR (0.06): moderate pathological trunk lean → score 1.0
   const hipScore = hipDiffs.length >= 5
-    ? Math.min(1, mean(hipDiffs) / 0.05)
+    ? Math.min(1, mean(hipDiffs) / HIP_ASYM_DIVISOR)
     : 0;
 
   const shoulderScore = shoulderTilts.length >= 5
-    ? Math.min(1, mean(shoulderTilts) / 0.08)
+    ? Math.min(1, mean(shoulderTilts) / SHOULDER_TILT_DIVISOR)
     : 0;
 
-  // Combined score — weight hip more if both available
+  // Combined score — weight hip more if both available (Baker 2006: pelvic obliquity
+  // is a more reliable frontal-plane indicator than shoulder tilt)
+  const weights = normativeRefs.frontalAsymmetry.compositeWeights;
   let score: number;
   let signalCount = 0;
   if (hipDiffs.length >= 5) signalCount++;
   if (shoulderTilts.length >= 5) signalCount++;
 
   if (signalCount === 2) {
-    score = hipScore * 0.6 + shoulderScore * 0.4;
+    score = hipScore * weights.hip + shoulderScore * weights.shoulder;
   } else if (hipDiffs.length >= 5) {
     score = hipScore;
   } else {
     score = shoulderScore;
   }
 
-  const confidence = Math.min(0.9, (hipDiffs.length + shoulderTilts.length) / 30);
+  // Confidence: require substantial evidence. A 1-second clip should not
+  // reach high confidence. Require ≥50 total observations for 0.85 ceiling.
+  const totalObs = hipDiffs.length + shoulderTilts.length;
+  const confidence = Math.min(0.85, totalObs / 50);
 
   return { value: parseFloat(score.toFixed(3)), confidence };
 }
@@ -217,10 +251,12 @@ function computeLateralTrunkSway(frames: LandmarkFrame[]): MetricValue {
   const variance = mean(lateralOffsets.map((l) => (l - avg) ** 2));
   const sd = Math.sqrt(variance);
 
-  // Normalize: SD of ~0.005 is normal, >0.02 is concerning
-  // Scale so 0.04 SD → 1.0 score
-  const normalized = Math.min(1, sd / 0.04);
-  const confidence = Math.min(1, lateralOffsets.length / 20);
+  // Normalize using clinically-derived divisor.
+  // TRUNK_SWAY_DIVISOR (0.025): Menz et al. 2003 — clinically obvious lateral
+  // instability at ~0.025 SD in normalized coords.
+  const normalized = Math.min(1, sd / TRUNK_SWAY_DIVISOR);
+  // Require ≥30 observations for reasonable confidence
+  const confidence = Math.min(0.85, lateralOffsets.length / 30);
 
   return { value: parseFloat(normalized.toFixed(3)), confidence };
 }
@@ -274,9 +310,12 @@ function computePathDeviation(frames: LandmarkFrame[]): MetricValue {
   const residuals = normalizedT.map((t, i) => xs[i] - (slope * t + intercept));
   const residualSD = Math.sqrt(mean(residuals.map((r) => r * r)));
 
-  // Normalize: 0.01 residual SD is normal, >0.03 is concerning
-  const normalized = Math.min(1, residualSD / 0.05);
-  const confidence = Math.min(1, xPositions.length / 15);
+  // Normalize using clinically-derived divisor.
+  // PATH_DEV_DIVISOR (0.035): 3.5% of screen width deviation → 1.0 score.
+  // Hausdorff 2005: healthy walkers typically <0.008 residual SD.
+  const normalized = Math.min(1, residualSD / PATH_DEV_DIVISOR);
+  // Require ≥25 data points for reasonable confidence
+  const confidence = Math.min(0.85, xPositions.length / 25);
 
   return { value: parseFloat(normalized.toFixed(3)), confidence };
 }

@@ -85,40 +85,48 @@ export function computeConcernProfile(
   // Also suppress if metric is in quality.suppressedMetrics
   const suppressed = new Set(quality.suppressedMetrics);
 
-  if (effectiveAsymConf < MIN_CONCERN_CONFIDENCE || suppressed.has('frontalAsymmetry')) {
-    if (asymmetry !== 'none') suppressedDomains.push('asymmetry');
+  // GRACEFUL DEGRADATION: Never reset concern to 'none' based on low confidence.
+  // The concern level reflects what the data shows — confidence tells us how much
+  // to trust it. Resetting to 'none' hides real patient pathology.
+  if (suppressed.has('frontalAsymmetry')) {
+    suppressedDomains.push('asymmetry');
     asymmetry = 'none';
   } else {
     assessedDomains.push('asymmetry');
   }
 
-  if (effectiveRhythmConf < MIN_CONCERN_CONFIDENCE || suppressed.has('strideRegularity')) {
-    if (irregularRhythm !== 'none') suppressedDomains.push('irregularRhythm');
+  if (suppressed.has('strideRegularity')) {
+    suppressedDomains.push('irregularRhythm');
     irregularRhythm = 'none';
   } else {
     assessedDomains.push('irregularRhythm');
   }
 
-  if (effectiveSwayConf < MIN_CONCERN_CONFIDENCE || suppressed.has('lateralTrunkSway')) {
-    if (lateralInstability !== 'none') suppressedDomains.push('lateralInstability');
+  if (suppressed.has('lateralTrunkSway')) {
+    suppressedDomains.push('lateralInstability');
     lateralInstability = 'none';
   } else {
     assessedDomains.push('lateralInstability');
   }
 
-  if (effectivePathConf < MIN_CONCERN_CONFIDENCE || suppressed.has('pathDeviation')) {
-    if (pathDeviation !== 'none') suppressedDomains.push('pathDeviation');
+  if (suppressed.has('pathDeviation')) {
+    suppressedDomains.push('pathDeviation');
     pathDeviation = 'none';
   } else {
     assessedDomains.push('pathDeviation');
   }
 
-  // Best-effort cap: never escalate above mild from low-quality data
+  // Best-effort cap: relax to allow 'moderate' for genuine patient signals.
+  // Capping everything at 'mild' hides real pathology from clinicians.
+  // Only cap at 'mild' if confidence is VERY low (< 0.25).
+  const isVeryLowConfidence = confMultiplier < 0.25;
+  const concernCap = isVeryLowConfidence ? BEST_EFFORT_CONCERN_CAP : 'moderate';
+
   if (isBestEffort) {
-    asymmetry = capConcern(asymmetry, BEST_EFFORT_CONCERN_CAP);
-    irregularRhythm = capConcern(irregularRhythm, BEST_EFFORT_CONCERN_CAP);
-    lateralInstability = capConcern(lateralInstability, BEST_EFFORT_CONCERN_CAP);
-    pathDeviation = capConcern(pathDeviation, BEST_EFFORT_CONCERN_CAP);
+    asymmetry = capConcern(asymmetry, concernCap);
+    irregularRhythm = capConcern(irregularRhythm, concernCap);
+    lateralInstability = capConcern(lateralInstability, concernCap);
+    pathDeviation = capConcern(pathDeviation, concernCap);
   }
 
   // Overall concern level
