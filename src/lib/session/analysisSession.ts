@@ -946,11 +946,11 @@ function computeAdaptiveSamplingFps(
   const approxMbps = (videoBytes * 8) / (duration * 1_000_000);
   const decodePenalty = clamp((approxMbps - 5) / 25, 0, 0.35);
 
-  let fps = 8 + Math.round((cpuScore * 0.45 + qualityScore * 0.55) * 12);
+  let fps = 15 + Math.round((cpuScore * 0.45 + qualityScore * 0.55) * 15);
 
   // If we detected too few cycles on a usable video, sample denser.
   if (assessment.detectedGaitCycles < 2 && assessment.frameUsabilityPct >= 0.35) {
-    fps += 2;
+    fps += 5;
   }
 
   // High camera shake reduces effective information gain from very high FPS.
@@ -959,7 +959,7 @@ function computeAdaptiveSamplingFps(
   }
 
   fps = Math.round(fps * (1 - decodePenalty));
-  return clamp(Math.max(8, fps), 8, 20);
+  return clamp(Math.max(15, fps), 15, 30);
 }
 
 function computeAdaptiveSmoothingAlpha(assessment: VideoQualityAssessment): number {

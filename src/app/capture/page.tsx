@@ -159,17 +159,7 @@ export default function CapturePage() {
   const [activeTab, setActiveTab] = useState("guide");
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoURL, setVideoURL] = useState<string | null>(null);
-  const [childName] = useState(() => {
-    if (typeof window === "undefined") return "your child";
-    try {
-      const raw = sessionStorage.getItem("gaitbridge_session");
-      if (!raw) return "your child";
-      const session = JSON.parse(raw);
-      return session.nickname || "your child";
-    } catch {
-      return "your child";
-    }
-  });
+  const [childName, setChildName] = useState("your child");
   const [isStoring, setIsStoring] = useState(false);
   const [isLoadingHeroClip, setIsLoadingHeroClip] = useState(false);
   const [heroClipError, setHeroClipError] = useState<string | null>(null);
@@ -194,6 +184,15 @@ export default function CapturePage() {
     const raw = sessionStorage.getItem("gaitbridge_session");
     if (!raw) {
       router.replace("/start");
+    } else {
+      try {
+        const session = JSON.parse(raw);
+        if (session.nickname) {
+          setChildName(session.nickname);
+        }
+      } catch {
+        // ignore
+      }
     }
   }, [router]);
 
@@ -236,10 +235,18 @@ export default function CapturePage() {
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith("video/")) {
+
+    const isVideoType = file.type.startsWith("video/");
+    const isVideoExt = /\.(mp4|m4v|mov|avi|wmv|flv|mkv|webm)$/i.test(file.name);
+    
+    if (!isVideoType && !isVideoExt) {
       alert("Please select a video file.");
       return;
     }
+
+    // Clear input value so selecting the same file again triggers onChange
+    e.target.value = "";
+
     setVideoFile(file);
     setVideoURL(URL.createObjectURL(file));
     setSourceType("upload");
@@ -346,11 +353,14 @@ export default function CapturePage() {
   }
 
   return (
-    <div className="min-h-dvh bg-gradient-to-b from-background to-muted/30 px-4 py-6 sm:px-6">
-      <div className="mx-auto max-w-lg">
+    <div className="min-h-[calc(100dvh-9rem)] bg-gradient-to-b from-background to-muted/30 px-4 py-6 sm:px-6">
+      <div className="mx-auto max-w-xl med-slide-up">
         {/* Header */}
-        <div className="mb-4 text-center">
-          <h1 className="text-xl font-bold text-foreground">
+        <div className="mb-4 rounded-2xl border border-border/60 bg-card/70 p-4 text-center">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Guided Capture
+          </p>
+          <h1 className="medical-title mt-1 text-xl font-semibold text-foreground">
             Record {childName}&apos;s walking
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -428,7 +438,7 @@ export default function CapturePage() {
                       </Button>
                     ) : (
                       <p className="text-[11px] text-amber-700">
-                        Demo lock is still blocked until `{heroClip?.filename ?? "toward_good.mp4"}` is added and approved.
+                        Demo lock is still blocked until {heroClip?.filename ?? "toward_good.mp4"} is added and approved.
                       </p>
                     )}
                     {heroClipError && (

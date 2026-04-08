@@ -1,178 +1,148 @@
 import Link from "next/link";
 import {
+  Activity,
+  ArrowRight,
+  ClipboardList,
+  Eye,
+  FlaskConical,
+  FileClock,
   Play,
   ShieldCheck,
-  Zap,
-  BarChart3,
-  ArrowRight,
-  Eye,
-  Heart,
-  Clock,
+  Stethoscope,
+  Video,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
 export default function LandingPage() {
   return (
-    <div className="flex flex-col">
-      {/* Hero — video-first messaging */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-primary/5 via-background to-accent/5 px-4 pb-16 pt-12 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-3xl text-center">
-          <Badge
-            variant="secondary"
-            className="mb-6 gap-1.5 px-3 py-1 text-xs font-medium"
-          >
+    <div className="relative overflow-hidden">
+      <div className="pointer-events-none absolute left-[-8rem] top-[-6rem] h-64 w-64 rounded-full bg-primary/15 blur-3xl" />
+      <div className="pointer-events-none absolute right-[-6rem] top-[20%] h-72 w-72 rounded-full bg-accent/20 blur-3xl" />
+
+      <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-5 sm:px-6">
+        <Link href="/" className="inline-flex items-center gap-2">
+          <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+            <Stethoscope className="h-4 w-4" />
+          </span>
+          <span className="text-base font-semibold tracking-tight">Pedi-Growth</span>
+        </Link>
+
+        <nav className="hidden items-center gap-2 md:flex">
+          <Link href="/start" className="rounded-full px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-secondary hover:text-foreground">Start Intake</Link>
+          <Link href="/capture" className="rounded-full px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-secondary hover:text-foreground">Capture</Link>
+          <Link href="/history" className="rounded-full px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-secondary hover:text-foreground">History</Link>
+        </nav>
+      </header>
+
+      <section className="mx-auto grid w-full max-w-6xl gap-8 px-4 pb-14 pt-4 sm:px-6 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
+        <div className="med-slide-up space-y-4">
+          <Badge variant="secondary" className="gap-1.5 px-3 py-1 text-xs">
             <ShieldCheck className="h-3.5 w-3.5" />
-            Caregiver Support Tool - Not a Diagnostic Device
+            Clinical Support Interface - Non-diagnostic
           </Badge>
 
-          <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl lg:text-5xl">
-            Understand your child&apos;s walking video with clear, caregiver-friendly guidance.
+          <h1 className="medical-title max-w-2xl text-4xl font-semibold leading-tight text-foreground sm:text-5xl">
+            Professional pediatric gait documentation for families and clinical teams.
           </h1>
 
-          <p className="mt-4 text-base font-medium text-foreground/80 sm:text-lg">
-            Record one short front-view clip. We help you see what looked steady, what looked less clear, and what to discuss next.
+          <p className="max-w-2xl text-base text-muted-foreground sm:text-lg">
+            Capture one front-view walking clip, review evidence-backed observations, and share a structured handoff summary with clinicians in minutes.
           </p>
 
-          <p className="mx-auto mt-3 max-w-2xl text-sm text-muted-foreground sm:text-base">
-            GAITBRIDGE reviews visible movement patterns like left-right balance, step rhythm, and steadiness, then explains findings in plain language with evidence.
-          </p>
-
-          <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+          <div className="flex flex-col gap-3 pt-2 sm:flex-row">
             <Link href="/start" className="w-full sm:w-auto">
-              <Button
-                size="lg"
-                className="touch-target w-full gap-2 text-base font-semibold sm:w-auto"
-                id="cta-start"
-              >
+              <Button size="lg" className="cta-gradient w-full gap-2 rounded-xl px-6 text-base font-semibold sm:w-auto" id="cta-start">
                 <Play className="h-4 w-4" />
-                Start Analysis
+                Start New Assessment
                 <ArrowRight className="h-4 w-4" />
+              </Button>
+            </Link>
+            <Link href="/history" className="w-full sm:w-auto">
+              <Button variant="outline" size="lg" className="w-full gap-2 rounded-xl px-6 text-base sm:w-auto">
+                <FileClock className="h-4 w-4" />
+                Open Assessment History
               </Button>
             </Link>
           </div>
 
-          <p className="mt-4 text-xs text-muted-foreground">
-            No account needed · Most analyses in under a minute · Privacy-first
+          <p className="text-xs font-medium text-muted-foreground">
+            Local-first processing. No diagnosis claims. Designed for follow-up conversations with qualified professionals.
           </p>
-
-          <div className="mx-auto mt-6 grid max-w-2xl gap-3 text-left sm:grid-cols-2">
-            <div className="rounded-xl border border-border/60 bg-card/70 p-3">
-              <p className="text-xs font-semibold text-foreground">What you get right away</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                A plain-language summary, confidence guidance, and clear notes on what could not be evaluated safely.
-              </p>
-            </div>
-            <div className="rounded-xl border border-border/60 bg-card/70 p-3">
-              <p className="text-xs font-semibold text-foreground">Why families trust it</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Every result includes visual evidence and never claims to diagnose a medical condition.
-              </p>
-            </div>
-          </div>
         </div>
 
-        {/* Decorative */}
-        <div className="pointer-events-none absolute -left-32 -top-32 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-32 -right-32 h-64 w-64 rounded-full bg-accent/10 blur-3xl" />
-      </section>
-
-      {/* How it works — 3 steps, not 4 */}
-      <section className="border-t bg-card px-4 py-12 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-3xl">
-          <h2 className="text-center text-xl font-bold text-foreground sm:text-2xl">
-            Three Simple Steps
-          </h2>
-
-          <div className="mt-8 grid gap-6 sm:grid-cols-3">
+        <div className="medical-surface med-slide-up med-stagger-2 space-y-4 p-5 sm:p-6">
+          <h2 className="medical-title text-xl font-semibold">Operational Flow</h2>
+          <div className="space-y-2.5">
             {[
-              {
-                icon: Play,
-                step: "1",
-                title: "Record",
-                desc: "Capture a short front-view walking clip with in-app guidance.",
-                color: "text-primary",
-                bg: "bg-primary/10",
-              },
-              {
-                icon: Zap,
-                step: "2",
-                title: "Analyze",
-                desc: "We check video quality and measure visible movement patterns.",
-                color: "text-concern-moderate",
-                bg: "bg-concern-moderate/10",
-              },
-              {
-                icon: BarChart3,
-                step: "3",
-                title: "Results",
-                desc: "See a clear summary, annotated hero video, and evidence.",
-                color: "text-concern-none",
-                bg: "bg-concern-none/10",
-              },
+              { icon: ClipboardList, title: "Intake", desc: "Age, mobility status, consent" },
+              { icon: Video, title: "Capture", desc: "Guided recording and quality preflight" },
+              { icon: Activity, title: "Analysis", desc: "Pose extraction and concern profiling" },
+              { icon: FlaskConical, title: "Results", desc: "Caregiver summary + clinician packet" },
             ].map((item) => (
-              <div
-                key={item.step}
-                className="flex flex-col items-center rounded-2xl border border-border/50 bg-card p-6 text-center transition-shadow hover:shadow-md"
-              >
-                <div className={`mb-3 flex h-12 w-12 items-center justify-center rounded-xl ${item.bg}`}>
-                  <item.icon className={`h-6 w-6 ${item.color}`} />
-                </div>
-                <div className="mb-1 text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                  Step {item.step}
-                </div>
-                <h3 className="text-base font-semibold text-foreground">
-                  {item.title}
-                </h3>
-                <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                  {item.desc}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Trust signals — compact */}
-      <section className="border-t px-4 py-10 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-3xl">
-          <div className="grid gap-5 sm:grid-cols-3">
-            {[
-              {
-                icon: ShieldCheck,
-                title: "Never Diagnoses",
-                desc: "Documents movement concerns and supports follow-up conversations.",
-              },
-              {
-                icon: Eye,
-                title: "Explainable",
-                desc: "Each result shows what was measured and what remained unclear.",
-              },
-              {
-                icon: Heart,
-                title: "Privacy-First",
-                desc: "Video is processed locally. Nothing is kept unless you choose to save.",
-              },
-            ].map((item) => (
-              <div key={item.title} className="flex gap-3">
-                <div className="flex-shrink-0 rounded-lg bg-primary/10 p-2.5">
-                  <item.icon className="h-5 w-5 text-primary" />
-                </div>
+              <div key={item.title} className="flex items-start gap-3 rounded-xl bg-surface-container-low p-3">
+                <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary/12 text-primary">
+                  <item.icon className="h-4 w-4" />
+                </span>
                 <div>
-                  <h3 className="text-sm font-semibold text-foreground">{item.title}</h3>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{item.desc}</p>
+                  <p className="text-sm font-semibold text-foreground">{item.title}</p>
+                  <p className="text-xs text-muted-foreground">{item.desc}</p>
                 </div>
               </div>
             ))}
           </div>
-
-          {/* Speed callout */}
-          <div className="mt-8 flex items-center justify-center gap-2 text-sm text-muted-foreground">
-            <Clock className="h-4 w-4" />
-            <span>Most analyses complete in under 60 seconds</span>
-          </div>
         </div>
       </section>
+
+      <section className="border-y border-border/60 bg-card/80">
+        <div className="mx-auto grid w-full max-w-6xl gap-4 px-4 py-10 sm:px-6 lg:grid-cols-3">
+          {[
+            {
+              icon: Eye,
+              title: "Explainable by design",
+              desc: "Every output includes evidence notes, confidence context, and clearly stated limitations.",
+            },
+            {
+              icon: ShieldCheck,
+              title: "Safety language built in",
+              desc: "The experience avoids diagnostic claims and guides users toward appropriate clinical follow-up.",
+            },
+            {
+              icon: Activity,
+              title: "Operationally connected",
+              desc: "Intake, capture, analysis, results, and history are linked through one continuous workflow.",
+            },
+          ].map((item) => (
+            <article key={item.title} className="rounded-2xl border border-border/60 bg-surface p-5 shadow-[0_10px_24px_rgba(16,36,45,0.08)]">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary/12 text-primary">
+                <item.icon className="h-4 w-4" />
+              </span>
+              <h3 className="mt-3 text-sm font-semibold text-foreground">{item.title}</h3>
+              <p className="mt-1 text-sm text-muted-foreground">{item.desc}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
+        <div className="medical-surface flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-7">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Ready to run a complete flow?</p>
+            <h2 className="medical-title mt-1 text-2xl font-semibold">Begin with intake to route each child appropriately.</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Children who are not independently walking are routed to Concern Navigator with tailored guidance.</p>
+          </div>
+          <Link href="/start" className="sm:shrink-0">
+            <Button size="lg" className="cta-gradient w-full gap-2 rounded-xl px-6 sm:w-auto">
+              Start Intake
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </Link>
+        </div>
+      </section>
+
+      <footer className="border-t border-border/60 px-4 py-6 text-center text-xs text-muted-foreground sm:px-6">
+        Pedi-Growth is an observational support tool and does not diagnose conditions. Clinical decisions must be made by qualified healthcare professionals.
+      </footer>
     </div>
   );
 }

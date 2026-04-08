@@ -79,6 +79,61 @@ def _coeff_variation(arr):
     return np.std(arr) / abs(m) if m != 0 else 0.0
 
 
+import pandas as pd
+from scipy.signal import savgol_filter
+
+def smooth_landmarks(frames, window_length=9, polyorder=3):
+    """
+    Applies Savitzky-Golay filter to smooth joint trajectories over time.
+    Handles missing points (0,0) by interpolating before filtering.
+    """
+    if not frames or len(frames) < window_length:
+        return frames
+
+    joints = frames[0].keys()
+    coords = {j: [] for j in joints}
+    
+    for f in frames:
+        for j in joints:
+            val = list(f.get(j, (0, 0)))
+            # Convert pure [0,0] missing values to NaN for clean interpolation
+            if val[0] == 0 and val[1] == 0:
+                val = [np.nan, np.nan]
+            coords[j].append(val)
+            
+    smoothed_coords = {}
+    for j in joints:
+        df = pd.DataFrame(coords[j], columns=['x', 'y'])
+        # Linearly interpolate missing frame gaps
+        df = df.interpolate(method='linear', limit_direction='both')
+        arr = df.to_numpy()
+        
+        if np.isnan(arr).all():
+            smoothed_coords[j] = np.zeros_like(arr)
+            continue
+            
+        try:
+            x_smooth = savgol_filter(arr[:, 0], window_length, polyorder)
+            y_smooth = savgol_filter(arr[:, 1], window_length, polyorder)
+            smoothed_coords[j] = np.column_stack((x_smooth, y_smooth))
+        except Exception:
+            # Fallback if filter fails (e.g., array too small)
+            smoothed_coords[j] = arr
+            
+    smoothed_frames = []
+    for i in range(len(frames)):
+        f_sm = {}
+        for j in joints:
+            x, y = smoothed_coords[j][i]
+            if np.isnan(x) or np.isnan(y):
+                f_sm[j] = (0.0, 0.0)
+            else:
+                f_sm[j] = (float(x), float(y))
+        smoothed_frames.append(f_sm)
+        
+    return smoothed_frames
+
+
 def extract_features_from_landmarks(frames, patient_info=None):
     """
     Extract the 34 features from a sequence of MediaPipe landmark frames.
@@ -95,6 +150,9 @@ def extract_features_from_landmarks(frames, patient_info=None):
     Returns:
         dict with all 34 features, or None if insufficient data.
     """
+    # Apply Savitzky-Golay smoothing to eliminate high-frequency tracking jitter
+    frames = smooth_landmarks(frames, window_length=11, polyorder=3)
+
     l_knee_angles  = []
     r_knee_angles  = []
     l_hip_angles   = []

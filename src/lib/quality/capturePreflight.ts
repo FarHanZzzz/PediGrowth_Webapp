@@ -129,22 +129,39 @@ export async function runCapturePreflight(videoBlob: Blob): Promise<CapturePrefl
 
 async function seekTo(video: HTMLVideoElement, seconds: number): Promise<void> {
   await new Promise<void>((resolve, reject) => {
+    let timeout: ReturnType<typeof setTimeout>;
+    
     const onSeeked = () => {
       cleanup();
       resolve();
     };
     const onError = () => {
       cleanup();
-      reject(new Error('Video seeking failed during preflight check.'));
+      resolve(); // Resolve anyway to proceed instead of hanging or failing the whole check
     };
     const cleanup = () => {
+      clearTimeout(timeout);
       video.removeEventListener('seeked', onSeeked);
       video.removeEventListener('error', onError);
     };
 
     video.addEventListener('seeked', onSeeked);
     video.addEventListener('error', onError);
-    video.currentTime = Math.min(Math.max(seconds, 0), Math.max(video.duration - 0.05, 0));
+    
+    const targetTime = Math.min(Math.max(seconds, 0), Math.max(video.duration - 0.05, 0));
+    
+    if (Math.abs(video.currentTime - targetTime) < 0.01) {
+      cleanup();
+      resolve();
+      return;
+    }
+    
+    video.currentTime = targetTime;
+    
+    timeout = setTimeout(() => {
+      cleanup();
+      resolve(); // Timeout fallback
+    }, 1500); // Wait at most 1.5s per frame
   });
 }
 

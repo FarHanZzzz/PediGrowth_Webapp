@@ -2,9 +2,22 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Activity, CheckCircle2, Loader2, AlertTriangle, RefreshCw } from "lucide-react";
-import { Progress } from "@/components/ui/progress";
-import { Button } from "@/components/ui/button";
+import "./analyzing.css";
+import {
+  Activity,
+  CheckCircle2,
+  Loader2,
+  AlertTriangle,
+  RefreshCw,
+  ArrowLeft,
+  Search,
+  Cpu,
+  ScanLine,
+  Footprints,
+  BarChart3,
+  FileCheck,
+  X,
+} from "lucide-react";
 import { runAnalysisPipeline } from "@/lib/session/analysisSession";
 import { saveResult } from "@/lib/session/videoStore";
 import type { PipelineProgress } from "@/lib/session/analysisSession";
@@ -19,10 +32,23 @@ const STAGE_LABELS = [
   "Generating results",
 ];
 
+const STAGE_DESCRIPTIONS = [
+  "Reading video file and preparing frames for analysis...",
+  "Loading AI models and preparing pose estimation engine...",
+  "Verifying video resolution, lighting, and framing quality...",
+  "Identifying 33 skeletal keypoints across each video frame...",
+  "Measuring joint angles, stride symmetry, and movement patterns...",
+  "Evaluating gait metrics against clinical reference data...",
+  "Compiling comprehensive results with annotated visualizations...",
+];
+
+const STAGE_ICONS = [Search, Cpu, ScanLine, Footprints, Activity, BarChart3, FileCheck];
+
 export default function AnalyzingPage() {
   const router = useRouter();
   const [currentStage, setCurrentStage] = useState(0);
   const [progress, setProgress] = useState(0);
+  const [stageProgress, setStageProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [analysisAttempt, setAnalysisAttempt] = useState(0);
   const pipelineRan = useRef(false);
@@ -50,18 +76,17 @@ export default function AnalyzingPage() {
     const validationMode = Boolean(session.validationMode ?? (process.env.NEXT_PUBLIC_VALIDATION_MODE === "true"));
 
     if (!sessionId) {
-      // No video stored — can't analyze. Redirect back.
       router.replace("/capture");
       return;
     }
 
-    // Run the real analysis pipeline
     runAnalysisPipeline(
       sessionId,
       nickname,
       ageMonths,
       (p: PipelineProgress) => {
         setCurrentStage(p.stageIndex);
+        setStageProgress(Math.round(p.stageProgress * 100));
         const overallProgress = ((p.stageIndex + p.stageProgress) / p.totalStages) * 100;
         setProgress(Math.min(overallProgress, 99));
       },
@@ -75,19 +100,21 @@ export default function AnalyzingPage() {
       },
     )
       .then((result) => {
-        // Store result in sessionStorage + IndexedDB for persistence
         const resultId = result.id;
         const serialized = JSON.stringify(result);
-        sessionStorage.setItem(`gaitbridge_result_${resultId}`, serialized);
-        // Backward compatibility for previously released readers.
-        sessionStorage.setItem(`pedigrowth_result_${resultId}`, serialized);
-        saveResult(resultId, result).catch(() => {}); // fire-and-forget
+        // sessionStorage has a ~5MB limit; IndexedDB is the primary store
+        try {
+          sessionStorage.setItem(`gaitbridge_result_${resultId}`, serialized);
+          sessionStorage.setItem(`pedigrowth_result_${resultId}`, serialized);
+        } catch {
+          // QuotaExceededError â€” fall through, IndexedDB will handle it
+          console.warn("sessionStorage quota exceeded, using IndexedDB only");
+        }
+        saveResult(resultId, result).catch(() => {});
 
-        // Complete progress
         setCurrentStage(STAGE_LABELS.length);
         setProgress(100);
 
-        // Navigate to results after a brief "complete" animation
         setTimeout(() => {
           router.push(`/results/${resultId}`);
         }, 500);
@@ -100,7 +127,6 @@ export default function AnalyzingPage() {
         );
       });
 
-    // P1-07: Timeout after 120 seconds
     const timeout = setTimeout(() => {
       setError((existing) =>
         existing ??
@@ -112,91 +138,218 @@ export default function AnalyzingPage() {
     return () => clearTimeout(timeout);
   }, [router, analysisAttempt]);
 
+  // Circular progress SVG math
+  const radius = 26;
+  const circumference = 2 * Math.PI * radius;
+  const strokeDashoffset = circumference - (progress / 100) * circumference;
+
+  /* â”€â”€ Error State â”€â”€ */
   if (error) {
     return (
-      <div className="px-4 py-10 sm:px-6">
-        <div className="mx-auto w-full max-w-md rounded-[1.8rem] bg-error-container/65 p-7 text-center shadow-[0_12px_32px_rgba(21,29,28,0.06)]">
-          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-error-container">
-            <AlertTriangle className="h-8 w-8 text-destructive" />
+      <div className="analyzing-page">
+        <div className="analyzing-error">
+          <div className="analyzing-error__icon">
+            <AlertTriangle className="h-7 w-7" />
           </div>
-          <h1 data-display="true" className="text-2xl font-semibold text-foreground">Analysis Error</h1>
-          <p className="mt-2 mb-6 text-sm text-muted-foreground">{error}</p>
-          <div className="space-y-3">
-            <Button
+          <h1 className="analyzing-error__title">Analysis Error</h1>
+          <p className="analyzing-error__desc">{error}</p>
+          <div className="analyzing-error__actions">
+            <button
+              className="error-btn error-btn--primary"
               onClick={() => {
                 setError(null);
                 pipelineRan.current = false;
                 setCurrentStage(0);
                 setProgress(0);
-                setAnalysisAttempt((value) => value + 1);
+                setStageProgress(0);
+                setAnalysisAttempt((v) => v + 1);
               }}
-              size="lg"
-              className="w-full gap-2"
             >
               <RefreshCw className="h-4 w-4" />
               Try Again
-            </Button>
-            <Button
-              variant="secondary"
+            </button>
+            <button
+              className="error-btn error-btn--secondary"
               onClick={() => router.push("/capture")}
-              size="lg"
-              className="w-full"
             >
               Record a New Video
-            </Button>
+            </button>
           </div>
         </div>
       </div>
     );
   }
 
+  /* â”€â”€ Processing State â”€â”€ */
   return (
-    <div className="px-4 py-8 sm:px-6">
-      <div className="mx-auto w-full max-w-lg rounded-[2rem] bg-surface-container-low p-7 text-center">
-        {/* Animated icon */}
-        <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-surface-container-lowest shadow-[0_12px_32px_rgba(21,29,28,0.06)]">
-          <Activity className="h-8 w-8 text-primary animate-pulse" />
+    <div className="analyzing-page">
+      <div className="analyzing-container">
+        {/* Header */}
+        <div className="analyzing-header">
+          <button
+            className="analyzing-header__back"
+            onClick={() => router.push("/capture")}
+            aria-label="Go back"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+          <span className="analyzing-header__title">AI Processing</span>
+          <div className="analyzing-header__spacer" />
         </div>
 
-        <h1 data-display="true" className="text-3xl font-semibold text-foreground">Analyzing</h1>
-        <p className="mt-2 mb-6 text-sm text-muted-foreground">
-          Processing your video with AI pose detection
-        </p>
-
-        {/* Progress */}
-        <Progress value={progress} className="mb-4" />
-
-        {/* Stages */}
-        <div className="clinical-card mt-4 space-y-2 rounded-[1.4rem] p-4 text-left">
-          {STAGE_LABELS.map((label, i) => (
+        {/* Progress Card */}
+        <div className="progress-card">
+          <div className="progress-card__shimmer" />
+          <div className="progress-card__content">
+            <div className="progress-card__text">
+              <span className="progress-card__label">
+                {currentStage < STAGE_LABELS.length
+                  ? "Analyzing Gait..."
+                  : "Analysis Complete!"}
+              </span>
+              <span className="progress-card__steps">
+                {Math.min(currentStage + 1, STAGE_LABELS.length)}/{STAGE_LABELS.length} Steps Completed
+              </span>
+            </div>
+            <div className="circular-progress">
+              <svg className="circular-progress__svg" viewBox="0 0 64 64">
+                <circle
+                  className="circular-progress__track"
+                  cx="32"
+                  cy="32"
+                  r={radius}
+                />
+                <circle
+                  className="circular-progress__fill"
+                  cx="32"
+                  cy="32"
+                  r={radius}
+                  strokeDasharray={circumference}
+                  strokeDashoffset={strokeDashoffset}
+                />
+              </svg>
+              <span className="circular-progress__value">
+                {Math.round(progress)}%
+              </span>
+            </div>
+          </div>
+          <div className="progress-card__bar">
             <div
-              key={label}
-              className={`flex items-center gap-2 text-xs transition-opacity ${
+              className="progress-card__bar-fill"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Stage Icons Strip */}
+        <div className="stage-icons">
+          {STAGE_ICONS.map((Icon, i) => (
+            <div
+              key={i}
+              className={`stage-icon ${
                 i < currentStage
-                  ? "text-concern-none"
+                  ? "stage-icon--completed"
                   : i === currentStage
-                  ? "text-foreground font-medium"
-                  : "text-muted-foreground/40"
+                  ? "stage-icon--active"
+                  : "stage-icon--pending"
               }`}
             >
               {i < currentStage ? (
-                <CheckCircle2 className="h-3.5 w-3.5" />
-              ) : i === currentStage ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <CheckCircle2 className="h-4 w-4" />
               ) : (
-                <div className="h-3.5 w-3.5 rounded-full bg-outline-variant/35" />
+                <Icon className="h-4 w-4" />
               )}
-              {label}
             </div>
           ))}
         </div>
 
-        <p className="mt-6 text-[10px] text-muted-foreground/50">
-          Video is processed locally on your device
-        </p>
+        {/* Steps List */}
+        <div className="steps-list">
+          <h2 className="steps-list__title">Analyzing Gait Patterns</h2>
 
-        {/* P1-07: Cancel button */}
-        <Button variant="ghost" size="sm" className="mt-4 text-xs" onClick={() => router.push("/capture")}>Cancel</Button>
+          {STAGE_LABELS.map((label, i) => {
+            const isCompleted = i < currentStage;
+            const isActive = i === currentStage;
+
+            return (
+              <div
+                key={label}
+                className={`step-item ${
+                  isCompleted
+                    ? "step-item--completed"
+                    : isActive
+                    ? "step-item--active"
+                    : "step-item--pending"
+                }`}
+              >
+                <div
+                  className={`step-item__icon ${
+                    isCompleted
+                      ? "step-item__icon--completed"
+                      : isActive
+                      ? "step-item__icon--active"
+                      : "step-item__icon--pending"
+                  }`}
+                >
+                  {isCompleted ? (
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                  ) : isActive ? (
+                    <Loader2 className="h-3.5 w-3.5 spin-animation" />
+                  ) : (
+                    <div
+                      style={{
+                        width: "0.5rem",
+                        height: "0.5rem",
+                        borderRadius: "50%",
+                        background: "#c4d5d2",
+                      }}
+                    />
+                  )}
+                </div>
+
+                <div className="step-item__content">
+                  <span className="step-item__label">
+                    {isActive ? `${label}...` : label}
+                  </span>
+                  {(isCompleted || isActive) && (
+                    <p className="step-item__desc">
+                      {STAGE_DESCRIPTIONS[i]}
+                    </p>
+                  )}
+                  {isActive && (
+                    <>
+                      <div className="step-item__progress">
+                        <div
+                          className="step-item__progress-fill"
+                          style={{ width: `${stageProgress}%` }}
+                        />
+                      </div>
+                      <div className="step-item__skeleton">
+                        <div className="skeleton-line" />
+                        <div className="skeleton-line" />
+                        <div className="skeleton-line" />
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Bottom */}
+        <div className="analyzing-bottom">
+          <button
+            className="analyzing-cancel"
+            onClick={() => router.push("/capture")}
+          >
+            <X className="h-4 w-4" />
+            Cancel Analysis
+          </button>
+          <span className="analyzing-privacy">
+            🔒 Video is processed locally on your device — nothing is uploaded
+          </span>
+        </div>
       </div>
     </div>
   );

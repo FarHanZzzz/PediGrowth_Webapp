@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Disable the floating Next.js DevTools indicator
+  devIndicators: false,
   // Security headers
   async headers() {
     return [

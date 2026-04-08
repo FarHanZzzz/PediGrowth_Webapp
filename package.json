@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
+    "lint": "node --max-old-space-size=4096 ./node_modules/eslint/bin/eslint.js",
     "type-check": "tsc --noEmit",
     "test": "node --test tests/**/*.test.mjs",
     "benchmark:robustness": "node scripts/python_runner.mjs scripts/run_robustness_benchmark.py --output-dir outputs/robustness_benchmark",
