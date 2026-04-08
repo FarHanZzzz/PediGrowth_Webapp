@@ -35,6 +35,13 @@ const TIPS = [
   { text: "Don't record less than 3 seconds", do: false },
 ];
 
+const QUICK_CHECKLIST = [
+  "Front view: child walks toward or away from camera",
+  "Full body visible from head to feet",
+  "At least 4-6 clear steps",
+  "Camera held still at about waist height",
+];
+
 export default function CapturePage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("guide");
@@ -43,7 +50,7 @@ export default function CapturePage() {
   const [childName] = useState(() => {
     if (typeof window === "undefined") return "your child";
     try {
-      const raw = sessionStorage.getItem("pedigrowth_session");
+      const raw = sessionStorage.getItem("gaitbridge_session");
       if (!raw) return "your child";
       const session = JSON.parse(raw);
       return session.nickname || "your child";
@@ -63,7 +70,7 @@ export default function CapturePage() {
   const validationMode = process.env.NEXT_PUBLIC_VALIDATION_MODE === "true";
 
   useEffect(() => {
-    const raw = sessionStorage.getItem("pedigrowth_session");
+    const raw = sessionStorage.getItem("gaitbridge_session");
     if (!raw) {
       router.replace("/start");
     }
@@ -130,8 +137,8 @@ export default function CapturePage() {
       await storeVideo(sessionId, videoFile);
 
       // Update session with video metadata + sessionId
-      const existing = JSON.parse(sessionStorage.getItem("pedigrowth_session") || "{}");
-      sessionStorage.setItem("pedigrowth_session", JSON.stringify({
+      const existing = JSON.parse(sessionStorage.getItem("gaitbridge_session") || "{}");
+      sessionStorage.setItem("gaitbridge_session", JSON.stringify({
         ...existing,
         sessionId,
         sourceType,
@@ -163,36 +170,25 @@ export default function CapturePage() {
   }
 
   return (
-    <div className="px-4 py-6 sm:px-6">
-      <div className="mx-auto max-w-5xl">
-        <div className="mb-5 grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
-          <div className="clinical-layer rounded-[1.8rem] px-6 py-7">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Capture Studio</p>
-            <h1 data-display="true" className="mt-2 text-3xl font-semibold leading-tight">
-              Record {childName}&apos;s walking
-            </h1>
-            <p className="mt-2 text-sm text-muted-foreground sm:text-base">
-              A high-quality front-view clip gives cleaner feature extraction and stronger confidence.
+    <div className="min-h-dvh bg-gradient-to-b from-background to-muted/30 px-4 py-6 sm:px-6">
+      <div className="mx-auto max-w-lg">
+        {/* Header */}
+        <div className="mb-4 text-center">
+          <h1 className="text-xl font-bold text-foreground">
+            Record {childName}&apos;s walking
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Follow this quick guide for a clearer, more reliable result
+          </p>
+          {validationMode && (
+            <p className="mt-2 text-xs font-medium text-amber-700">
+              Validation mode is on. This run will fail loudly if analysis is not real.
             </p>
-            {validationMode && (
-              <p className="mt-3 rounded-xl bg-tertiary-fixed/35 px-3 py-2 text-xs font-medium text-foreground">
-                Validation mode is on. This run fails loudly when real analysis does not complete.
-              </p>
-            )}
-          </div>
-
-          <div className="clinical-card rounded-[1.8rem] p-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Quick Quality Rules</p>
-            <div className="mt-3 space-y-2 text-xs text-foreground/75">
-              <p className="rounded-xl bg-surface-container-low p-2.5">Toward-camera or away-camera front view</p>
-              <p className="rounded-xl bg-surface-container-low p-2.5">Head-to-feet framing with 4 to 6 steps</p>
-              <p className="rounded-xl bg-surface-container-low p-2.5">Stable phone at waist height</p>
-            </div>
-          </div>
+          )}
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="mb-4 grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-2 mb-4">
             <TabsTrigger value="guide" className="text-xs gap-1">
               <Video className="h-3 w-3" />
               Tips
@@ -212,16 +208,16 @@ export default function CapturePage() {
             <Card
               className={
                 approvedHeroClip
-                  ? "bg-secondary-container/70"
-                  : "bg-tertiary-fixed/30"
+                  ? "border-green-200 bg-green-50/70"
+                  : "border-amber-200 bg-amber-50/70"
               }
             >
               <CardContent className="p-4">
                 <div className="flex gap-3">
                   {approvedHeroClip ? (
-                    <Sparkles className="h-5 w-5 flex-shrink-0 text-secondary mt-0.5" />
+                    <Sparkles className="h-5 w-5 flex-shrink-0 text-green-700 mt-0.5" />
                   ) : (
-                    <ShieldAlert className="h-5 w-5 flex-shrink-0 text-foreground/70 mt-0.5" />
+                    <ShieldAlert className="h-5 w-5 flex-shrink-0 text-amber-700 mt-0.5" />
                   )}
                   <div className="space-y-2">
                     <div>
@@ -237,7 +233,7 @@ export default function CapturePage() {
                     {approvedHeroClip ? (
                       <Button
                         type="button"
-                        variant="secondary"
+                        variant="outline"
                         className="gap-2"
                         onClick={handleUseHeroClip}
                         disabled={isLoadingHeroClip}
@@ -255,7 +251,7 @@ export default function CapturePage() {
                         )}
                       </Button>
                     ) : (
-                      <p className="text-[11px] text-foreground/75">
+                      <p className="text-[11px] text-amber-700">
                         Demo lock is still blocked until `{heroClip?.filename ?? "toward_good.mp4"}` is added and approved.
                       </p>
                     )}
@@ -268,7 +264,7 @@ export default function CapturePage() {
             </Card>
 
             {/* Side view callout */}
-            <Card className="bg-primary/8">
+            <Card className="border-primary/30 bg-primary/5">
               <CardContent className="flex gap-3 p-4">
                 <Smartphone className="h-5 w-5 flex-shrink-0 text-primary mt-0.5" />
                 <div className="text-xs leading-relaxed">
@@ -283,19 +279,36 @@ export default function CapturePage() {
               </CardContent>
             </Card>
 
-            {/* Tips */}
-            <div className="space-y-2">
-              {TIPS.map((tip) => (
-                <div key={tip.text} className="flex gap-2.5 rounded-2xl bg-surface-container-lowest p-3 text-xs shadow-[0_12px_32px_rgba(21,29,28,0.06)]">
-                  {tip.do ? (
-                    <CheckCircle2 className="h-4 w-4 flex-shrink-0 text-concern-none" />
-                  ) : (
-                    <XCircle className="h-4 w-4 flex-shrink-0 text-concern-significant/60" />
-                  )}
-                  <span className="text-foreground/80">{tip.text}</span>
-                </div>
-              ))}
-            </div>
+            {/* Quick checklist */}
+            <Card>
+              <CardContent className="space-y-2 p-4">
+                <p className="text-sm font-semibold text-foreground">Quick recording checklist</p>
+                {QUICK_CHECKLIST.map((item) => (
+                  <div key={item} className="flex items-start gap-2.5 rounded-lg bg-muted/20 p-2.5 text-xs">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-concern-none" />
+                    <span className="text-foreground/85">{item}</span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+
+            <details className="rounded-lg border border-border/60 bg-card px-3 py-2">
+              <summary className="cursor-pointer text-xs font-semibold text-foreground">
+                Show full recording tips
+              </summary>
+              <div className="mt-3 space-y-2">
+                {TIPS.map((tip) => (
+                  <div key={tip.text} className="flex gap-2.5 rounded-lg bg-muted/20 p-2.5 text-xs">
+                    {tip.do ? (
+                      <CheckCircle2 className="h-4 w-4 flex-shrink-0 text-concern-none" />
+                    ) : (
+                      <XCircle className="h-4 w-4 flex-shrink-0 text-concern-significant/70" />
+                    )}
+                    <span className="text-foreground/85">{tip.text}</span>
+                  </div>
+                ))}
+              </div>
+            </details>
 
             {/* Actions */}
             <div className="space-y-3 pt-2">
@@ -405,7 +418,7 @@ export default function CapturePage() {
               </Button>
               <Button
                 onClick={handleRetake}
-                variant="secondary"
+                variant="outline"
                 size="lg"
                 className="touch-target w-full gap-2 text-base"
                 disabled={isStoring}

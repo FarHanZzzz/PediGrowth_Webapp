@@ -13,7 +13,6 @@ import {
   Card,
   CardContent,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -46,7 +45,7 @@ function readSavedSession(): {
     };
   }
 
-  const raw = sessionStorage.getItem("pedigrowth_session");
+  const raw = sessionStorage.getItem("gaitbridge_session");
   if (!raw) {
     return {
       consent: false,
@@ -86,23 +85,10 @@ export default function QuickGatePage() {
   const [nickname, setNickname] = useState(saved.nickname);
   const [error, setError] = useState("");
 
+  const canProceed = consent && ageMonths.trim() !== "" && walking !== "";
+
   function handleStart() {
     setError("");
-
-    if (!consent) {
-      setError("Please confirm consent to continue.");
-      return;
-    }
-
-    if (ageMonths.trim() === "") {
-      setError("Please enter age in months.");
-      return;
-    }
-
-    if (walking === "") {
-      setError("Please select whether your child walks independently.");
-      return;
-    }
 
     const age = Number(ageMonths);
     if (isNaN(age) || age < 0 || age > 216) {
@@ -117,51 +103,40 @@ export default function QuickGatePage() {
       caregiverIndicatesCannotWalk: walking === "no",
     });
 
-    try {
-      // Store minimal session data
-      sessionStorage.setItem("pedigrowth_session", JSON.stringify({
-        nickname: nickname.trim() || "your child",
-        ageMonths: age,
-        walking,
-        route: decision.route,
-        routeReason: decision.reason,
-        policyVersion: decision.policyVersion,
-        consentTimestamp: new Date().toISOString(),
-      }));
+    // Store minimal session data
+    sessionStorage.setItem("gaitbridge_session", JSON.stringify({
+      nickname: nickname.trim() || "your child",
+      ageMonths: age,
+      walking,
+      route: decision.route,
+      routeReason: decision.reason,
+      policyVersion: decision.policyVersion,
+      consentTimestamp: new Date().toISOString(),
+    }));
 
-      // Route silently — no intermediate routing page
-      if (decision.route === "route_a") {
-        router.push("/concern");
-      } else {
-        router.push("/capture");
-      }
-    } catch {
-      setError("Unable to start in this browser right now. Please enable site storage and try again.");
+    // Route silently — no intermediate routing page
+    if (decision.route === "route_a") {
+      router.push("/concern");
+    } else {
+      router.push("/capture");
     }
   }
 
   return (
-    <div className="px-4 py-6 sm:px-6">
-      <div className="mx-auto grid max-w-5xl gap-5 lg:grid-cols-[0.8fr_1.2fr]">
-        <aside className="clinical-layer rounded-[1.8rem] p-6 sm:p-7">
-          <Badge variant="secondary" className="mb-4 gap-1.5">
-            <ShieldCheck className="h-3.5 w-3.5" />
-            Intake Gate
-          </Badge>
-          <h1 data-display="true" className="text-3xl font-semibold leading-tight sm:text-4xl">
-            Start a calm, structured assessment.
+    <div className="flex min-h-dvh items-center justify-center bg-gradient-to-b from-background to-muted/30 px-4 py-8 sm:px-6">
+      <div className="mx-auto w-full max-w-md">
+        {/* Header — minimal */}
+        <div className="mb-6 text-center">
+          <h1 className="text-xl font-bold text-foreground sm:text-2xl">
+            Before You Record
           </h1>
-          <p className="mt-3 text-sm text-muted-foreground sm:text-base">
-            Answer three essentials so we route your child to the right experience: concern navigator or full gait analysis.
+          <p className="mt-1 text-sm text-muted-foreground">
+            Share a few details so we can route to the right guidance path.
           </p>
-          <div className="mt-6 space-y-3 text-sm text-foreground/80">
-            <p className="rounded-2xl bg-surface-container-lowest p-3">Age and walking status determine a safe route.</p>
-            <p className="rounded-2xl bg-surface-container-lowest p-3">No diagnosis language, always clinician-safe framing.</p>
-          </div>
-        </aside>
+        </div>
 
-        <Card className="rounded-[1.8rem]">
-          <CardContent className="space-y-6 p-6 sm:p-7">
+        <Card>
+          <CardContent className="space-y-5 p-5">
             {/* Nickname — optional */}
             <div className="space-y-1.5">
               <Label htmlFor="nickname" className="text-sm">
@@ -201,60 +176,56 @@ export default function QuickGatePage() {
             {/* Walking — required, big touch targets */}
             <div className="space-y-2">
               <Label className="text-sm font-medium">
-                Does your child walk independently? *
+                Which option best matches your child today? *
               </Label>
               <div className="grid grid-cols-3 gap-2">
                 {([
-                  { value: "yes" as const, label: "Yes", color: "bg-secondary-container text-secondary-foreground" },
-                  { value: "no" as const, label: "No", color: "bg-error-container text-on-error-container" },
-                  { value: "not_sure" as const, label: "Not sure", color: "bg-surface-container-low text-foreground" },
+                  {
+                    value: "yes" as const,
+                    label: "Walks on own",
+                    detail: "No routine support needed",
+                    color: "border-concern-none/50 bg-concern-none/5",
+                  },
+                  {
+                    value: "no" as const,
+                    label: "Not walking yet",
+                    detail: "Cannot take independent steps",
+                    color: "border-concern-moderate/50 bg-concern-moderate/5",
+                  },
+                  {
+                    value: "not_sure" as const,
+                    label: "Not sure",
+                    detail: "Mixed or changing pattern",
+                    color: "border-border bg-muted/30",
+                  },
                 ]).map((option) => (
                   <button
                     key={option.value}
                     type="button"
                     onClick={() => setWalking(option.value)}
-                    className={`touch-target flex items-center justify-center rounded-2xl border border-transparent p-3 text-sm font-medium transition-all ${
+                    className={`touch-target flex min-h-[72px] flex-col items-center justify-center rounded-lg border-2 p-2 text-center transition-all ${
                       walking === option.value
-                        ? `${option.color} shadow-[0_12px_32px_rgba(21,29,28,0.06)]`
-                        : "bg-surface-container-low hover:bg-surface-variant"
+                        ? `${option.color} ring-2 ring-primary/30`
+                        : "border-border bg-card hover:bg-muted/50"
                     }`}
                   >
-                    {option.label}
+                    <span className="text-xs font-semibold text-foreground">{option.label}</span>
+                    <span className="mt-0.5 text-[10px] leading-snug text-muted-foreground">{option.detail}</span>
                   </button>
                 ))}
               </div>
             </div>
 
             {/* Consent — compact */}
-            <div
-              className="flex items-start gap-3 rounded-2xl bg-surface-container-low p-4 cursor-pointer"
-              role="button"
-              tabIndex={0}
-              aria-pressed={consent}
-              onClick={() => setConsent((prev) => !prev)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  setConsent((prev) => !prev);
-                }
-              }}
-            >
+            <div className="flex items-start gap-3 rounded-lg bg-muted/40 p-3">
               <Checkbox
                 id="consent"
                 checked={consent}
-                onCheckedChange={(checked) => setConsent(checked)}
-                onClick={(event) => event.stopPropagation()}
-                className="mt-0.5"
+                onCheckedChange={(v) => setConsent(v === true)}
+                className="mt-0.5 size-5"
               />
-              <Label
-                htmlFor="consent"
-                className="text-xs leading-relaxed cursor-pointer text-muted-foreground"
-                onClick={(event) => {
-                  event.preventDefault();
-                  setConsent((prev) => !prev);
-                }}
-              >
-                I understand Pedi-Growth is a support tool that does not diagnose conditions.
+              <Label htmlFor="consent" className="text-xs leading-relaxed cursor-pointer text-muted-foreground">
+                I understand GAITBRIDGE is a support tool that does not diagnose conditions.
                 Video is processed on my device and not stored unless I choose to save.
               </Label>
             </div>
@@ -267,6 +238,7 @@ export default function QuickGatePage() {
             {/* Start button */}
             <Button
               onClick={handleStart}
+              disabled={!canProceed}
               size="lg"
               className="touch-target w-full gap-2 text-base font-semibold"
               id="quickgate-start"
@@ -280,16 +252,15 @@ export default function QuickGatePage() {
           </CardContent>
         </Card>
 
-        <div className="lg:col-span-2">
-          <div className="flex items-center justify-center gap-4 rounded-2xl bg-surface-container-low px-4 py-3 text-[11px] text-muted-foreground">
-            <span className="flex items-center gap-1">
-              <ShieldCheck className="h-3 w-3" /> Not diagnostic
-            </span>
-            <span>·</span>
-            <span className="flex items-center gap-1">
-              <Heart className="h-3 w-3" /> Privacy-first
-            </span>
-          </div>
+        {/* How-it-works micro-summary */}
+        <div className="mt-4 flex items-center justify-center gap-4 text-[11px] text-muted-foreground">
+          <span className="flex items-center gap-1">
+            <ShieldCheck className="h-3 w-3" /> Not diagnostic
+          </span>
+          <span>·</span>
+          <span className="flex items-center gap-1">
+            <Heart className="h-3 w-3" /> Privacy-first
+          </span>
         </div>
       </div>
     </div>

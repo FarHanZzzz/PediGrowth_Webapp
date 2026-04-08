@@ -22,6 +22,8 @@ interface Props {
   trace: AnalysisTrace;
   videoUrl: string;
   jumpToFrameIndex?: number | null;
+  audience?: "caregiver" | "clinician";
+  showAdvancedControls?: boolean;
 }
 
 const SPEED_OPTIONS = [0.25, 0.5, 1];
@@ -47,10 +49,18 @@ const DEBUG_LAYERS: OverlayLayer[] = [
   'pathCorridor',
 ];
 
-export default function AnnotatedVideoPlayer({ trace, videoUrl, jumpToFrameIndex = null }: Props) {
+export default function AnnotatedVideoPlayer({
+  trace,
+  videoUrl,
+  jumpToFrameIndex = null,
+  audience = "clinician",
+  showAdvancedControls = false,
+}: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animRef = useRef<number>(0);
+  const isCaregiver = audience === "caregiver";
+  const canShowAdvancedControls = !isCaregiver && showAdvancedControls;
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
@@ -208,21 +218,42 @@ export default function AnnotatedVideoPlayer({ trace, videoUrl, jumpToFrameIndex
     video.currentTime = frame.timestampMs / 1000;
   }, [jumpToFrameIndex, trace.frames]);
 
-  // Use the fixed version in the animation loop
+  // Keep frame overlays in sync during scrubs/seeks even when paused.
   useEffect(() => {
+    if (!videoReady) return;
+    const video = videoRef.current;
+    if (!video) return;
+
+    const syncFrame = () => {
+      renderCurrentFrameFixed();
+    };
+
+    video.addEventListener("timeupdate", syncFrame);
+    video.addEventListener("seeked", syncFrame);
+    video.addEventListener("pause", syncFrame);
+    syncFrame();
+
+    return () => {
+      video.removeEventListener("timeupdate", syncFrame);
+      video.removeEventListener("seeked", syncFrame);
+      video.removeEventListener("pause", syncFrame);
+    };
+  }, [videoReady, renderCurrentFrameFixed]);
+
+  // Run high-frequency overlay updates only while video is actively playing.
+  useEffect(() => {
+    if (!videoReady || !isPlaying) return;
+
     const tick = () => {
       renderCurrentFrameFixed();
       animRef.current = requestAnimationFrame(tick);
     };
 
-    if (videoReady) {
-      animRef.current = requestAnimationFrame(tick);
-    }
-
+    animRef.current = requestAnimationFrame(tick);
     return () => {
       cancelAnimationFrame(animRef.current);
     };
-  }, [videoReady, renderCurrentFrameFixed]);
+  }, [videoReady, isPlaying, renderCurrentFrameFixed]);
 
   // ── Controls ──────────────────────────────────────────────────
 
@@ -249,6 +280,27 @@ export default function AnnotatedVideoPlayer({ trace, videoUrl, jumpToFrameIndex
     setCurrentFrameIndex(newIdx);
   };
 
+  const jumpToAdjacentKeyMoment = (direction: -1 | 1) => {
+    const video = videoRef.current;
+    if (!video || trace.stepEvents.length === 0) {
+      stepFrame(direction);
+      return;
+    }
+
+    const sorted = [...trace.stepEvents].sort((a, b) => a.frameIndex - b.frameIndex);
+    const current = currentFrameIndex;
+
+    const target =
+      direction === -1
+        ? [...sorted].reverse().find((event) => event.frameIndex < current) ?? sorted[0]
+        : sorted.find((event) => event.frameIndex > current) ?? sorted[sorted.length - 1];
+
+    video.pause();
+    setIsPlaying(false);
+    video.currentTime = target.timestampMs / 1000;
+    setCurrentFrameIndex(target.frameIndex);
+  };
+
   const cycleSpeed = () => {
     const idx = SPEED_OPTIONS.indexOf(speed);
     const next = SPEED_OPTIONS[(idx + 1) % SPEED_OPTIONS.length];
@@ -257,6 +309,7 @@ export default function AnnotatedVideoPlayer({ trace, videoUrl, jumpToFrameIndex
   };
 
   const toggleMode = () => {
+    if (isCaregiver) return;
     const newMode = renderMode === 'clean' ? 'debug' : 'clean';
     setRenderMode(newMode);
     setActiveLayers(new Set(newMode === 'clean' ? CLEAN_LAYERS : DEBUG_LAYERS));
@@ -277,6 +330,7 @@ export default function AnnotatedVideoPlayer({ trace, videoUrl, jumpToFrameIndex
   const timeStr = currentFrame
     ? `${(currentFrame.timestampMs / 1000).toFixed(2)}s`
     : "0.00s";
+  const modeBadgeLabel = renderMode === "clean" ? "Standard overlay" : "Advanced overlay";
 
   return (
     <div className="space-y-3">
@@ -300,83 +354,98 @@ export default function AnnotatedVideoPlayer({ trace, videoUrl, jumpToFrameIndex
         />
 
         <div className="absolute left-2 top-2 flex flex-wrap gap-2">
-          <span className="rounded-full bg-black/65 px-2 py-0.5 text-[10px] font-semibold text-white">
-            {trace.run.classification === "real_analysis" ? "REAL ANALYSIS" : trace.run.classification.toUpperCase()}
-          </span>
-          <span className="rounded-full bg-black/55 px-2 py-0.5 text-[10px] text-white/90">
-            {trace.pipeline.direction === "toward" ? "Toward camera" : trace.pipeline.direction}
-          </span>
-          <span className="rounded-full bg-black/55 px-2 py-0.5 text-[10px] text-white/90">
-            Tracking {bodyVisPct >= 70 ? "High" : bodyVisPct >= 40 ? "Medium" : "Low"}
-          </span>
-          <span className="rounded-full bg-black/55 px-2 py-0.5 text-[10px] text-white/90">
-            {currentEvent ? `${currentEvent.side === "left" ? "L-step" : "R-step"} ${Math.round(currentEvent.confidence * 100)}%` : "Tracking"}
-          </span>
+          {!isCaregiver && (
+            <>
+              <span className="rounded-full bg-black/65 px-2 py-0.5 text-[10px] font-semibold text-white">
+                {trace.run.classification === "real_analysis"
+                  ? "Real analysis"
+                  : trace.run.classification.toUpperCase()}
+              </span>
+              <span className="rounded-full bg-black/55 px-2 py-0.5 text-[10px] text-white/90">
+                {trace.pipeline.direction === "toward" ? "Toward camera" : trace.pipeline.direction}
+              </span>
+              {renderMode === "debug" && (
+                <span className="rounded-full bg-black/55 px-2 py-0.5 text-[10px] text-white/90">
+                  Tracking {bodyVisPct >= 70 ? "High" : bodyVisPct >= 40 ? "Medium" : "Low"}
+                </span>
+              )}
+            </>
+          )}
         </div>
 
         {/* Frame info overlay */}
-        <div className="absolute bottom-2 left-2 flex gap-2">
-          <span className="bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full font-mono">
-            #{currentFrameIndex + 1}/{trace.frames.length}
-          </span>
-          <span className="bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full font-mono">
-            {timeStr}
-          </span>
-          <span
-            className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${
-              bodyVisPct >= 70
-                ? "bg-green-900/60 text-green-300"
-                : bodyVisPct >= 40
-                ? "bg-yellow-900/60 text-yellow-300"
-                : "bg-red-900/60 text-red-300"
-            }`}
-          >
-            {bodyVisPct}% visible
-          </span>
-        </div>
+          {!isCaregiver && (
+            <div className="absolute bottom-2 left-2 flex flex-wrap gap-2">
+              <span className="rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-mono text-white">
+                #{currentFrameIndex + 1}/{trace.frames.length}
+              </span>
+              <span className="rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-mono text-white">
+                {timeStr}
+              </span>
+              <span
+                className={`rounded-full px-2 py-0.5 text-[11px] font-mono ${
+                  bodyVisPct >= 70
+                    ? "bg-green-900/60 text-green-300"
+                    : bodyVisPct >= 40
+                    ? "bg-yellow-900/60 text-yellow-300"
+                    : "bg-red-900/60 text-red-300"
+                }`}
+              >
+                {bodyVisPct}% visible
+              </span>
+              {currentEvent && (
+                <span className="rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-mono text-white">
+                  {currentEvent.side === "left" ? "Left step" : "Right step"} {Math.round(currentEvent.confidence * 100)}%
+                </span>
+              )}
+            </div>
+        )}
 
-        {/* Mode badge */}
-        <div className="absolute top-2 right-2">
-          <span className={`text-[9px] px-2 py-0.5 rounded-full font-mono uppercase tracking-wider ${
-            renderMode === 'clean' 
-              ? "bg-green-900/50 text-green-300"
-              : "bg-orange-900/50 text-orange-300"
-          }`}>
-            {renderMode}
-          </span>
-        </div>
+        {canShowAdvancedControls && (
+          <div className="absolute top-2 right-2">
+            <span className={`rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider ${
+              renderMode === 'clean'
+                ? "bg-green-900/50 text-green-300"
+                : "bg-orange-900/50 text-orange-300"
+            }`}>
+              {modeBadgeLabel}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Confidence strip */}
-      <div className="h-3 rounded-full overflow-hidden flex bg-muted/30">
-        {trace.frames.map((f, i) => (
-          <div
-            key={i}
-            className="flex-1 cursor-pointer hover:opacity-80 transition-opacity"
-            style={{
-              backgroundColor: f.bodyVisibility >= 0.7
-                ? TRACE_COLORS.qualityGood
-                : f.bodyVisibility >= 0.4
-                ? TRACE_COLORS.qualityMedium
-                : TRACE_COLORS.qualityBad,
-              opacity: i === currentFrameIndex ? 1 : 0.5,
-            }}
-            onClick={() => {
-              if (videoRef.current) {
-                videoRef.current.pause();
-                setIsPlaying(false);
-                videoRef.current.currentTime = f.timestampMs / 1000;
-                setCurrentFrameIndex(i);
-              }
-            }}
-            title={`Frame ${i + 1}: ${Math.round(f.bodyVisibility * 100)}% visibility`}
-          />
-        ))}
-      </div>
+      {!isCaregiver && (
+        <div className="h-4 rounded-full overflow-hidden flex bg-muted/30">
+          {trace.frames.map((f, i) => (
+            <div
+              key={i}
+              className="flex-1 cursor-pointer hover:opacity-80 transition-opacity"
+              style={{
+                backgroundColor: f.bodyVisibility >= 0.7
+                  ? TRACE_COLORS.qualityGood
+                  : f.bodyVisibility >= 0.4
+                  ? TRACE_COLORS.qualityMedium
+                  : TRACE_COLORS.qualityBad,
+                opacity: i === currentFrameIndex ? 1 : 0.5,
+              }}
+              onClick={() => {
+                if (videoRef.current) {
+                  videoRef.current.pause();
+                  setIsPlaying(false);
+                  videoRef.current.currentTime = f.timestampMs / 1000;
+                  setCurrentFrameIndex(i);
+                }
+              }}
+              title={`Frame ${i + 1}: ${Math.round(f.bodyVisibility * 100)}% visibility`}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Step event timeline */}
-      {trace.stepEvents.length > 0 && (
-        <div className="relative h-5 rounded-full bg-muted/20">
+      {!isCaregiver && trace.stepEvents.length > 0 && (
+        <div className="relative h-7 rounded-full bg-muted/20">
           {trace.stepEvents.map((step, i) => {
             const pct =
               trace.videoMeta.durationMs > 0
@@ -385,7 +454,7 @@ export default function AnnotatedVideoPlayer({ trace, videoUrl, jumpToFrameIndex
             return (
               <div
                 key={i}
-                className="absolute top-0 w-3 h-5 rounded-sm cursor-pointer hover:scale-125 transition-transform"
+                className="absolute top-0 h-7 w-4 rounded-sm cursor-pointer hover:scale-110 transition-transform"
                 style={{
                   left: `${pct}%`,
                   backgroundColor: step.side === "left" ? TRACE_COLORS.leftSide : TRACE_COLORS.rightSide,
@@ -403,7 +472,7 @@ export default function AnnotatedVideoPlayer({ trace, videoUrl, jumpToFrameIndex
               />
             );
           })}
-          <div className="absolute -bottom-4 left-0 flex gap-3 text-[9px] text-muted-foreground">
+          <div className="absolute -bottom-5 left-0 flex gap-3 text-[10px] text-muted-foreground">
             <span className="flex items-center gap-1">
               <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: TRACE_COLORS.leftSide }} />
               L steps ({trace.pipeline.leftSteps})
@@ -417,69 +486,95 @@ export default function AnnotatedVideoPlayer({ trace, videoUrl, jumpToFrameIndex
       )}
 
       {/* Playback controls */}
-      <div className="flex items-center justify-center gap-2 pt-2">
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => stepFrame(-1)}>
-          <SkipBack className="h-3.5 w-3.5" />
-        </Button>
-        <Button variant="outline" size="icon" className="h-10 w-10" onClick={togglePlay}>
-          {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-        </Button>
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => stepFrame(1)}>
-          <SkipForward className="h-3.5 w-3.5" />
-        </Button>
-        <Button variant="ghost" size="sm" className="h-8 text-[10px] font-mono ml-2" onClick={cycleSpeed}>
-          <Rewind className="h-3 w-3 mr-1" />
-          {speed}x
-        </Button>
-
-        {/* Clean / Debug toggle */}
+      <div className="flex flex-wrap items-center justify-center gap-2 pt-4">
         <Button
           variant="ghost"
-          size="sm"
-          className={`h-8 text-[10px] font-mono ml-4 ${
-            renderMode === 'debug' ? "text-orange-400" : "text-muted-foreground"
-          }`}
-          onClick={toggleMode}
+          size="icon-lg"
+          className="touch-target"
+          onClick={() => (isCaregiver ? jumpToAdjacentKeyMoment(-1) : stepFrame(-1))}
         >
-          {renderMode === 'clean' ? (
-            <><Eye className="h-3 w-3 mr-1" /> Clean</>
-          ) : (
-            <><Bug className="h-3 w-3 mr-1" /> Debug</>
-          )}
+          <SkipBack className="h-4 w-4" />
         </Button>
+        <Button variant="outline" size="icon-lg" className="touch-target" onClick={togglePlay}>
+          {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-lg"
+          className="touch-target"
+          onClick={() => (isCaregiver ? jumpToAdjacentKeyMoment(1) : stepFrame(1))}
+        >
+          <SkipForward className="h-4 w-4" />
+        </Button>
+        {!isCaregiver && (
+          <Button variant="outline" size="sm" className="touch-target text-xs font-semibold" onClick={cycleSpeed}>
+            <Rewind className="mr-1 h-3 w-3" />
+            {speed}x
+          </Button>
+        )}
       </div>
+      <p className="text-center text-xs text-muted-foreground">
+        {isCaregiver
+          ? "Use play and arrow buttons to move between key moments."
+          : "Tap colored markers to jump to specific moments in the clip."}
+      </p>
 
-      {renderMode === "debug" && (
-        <>
-          <div className="flex flex-wrap gap-1.5 pt-1">
-            {(Object.keys(OVERLAY_LAYER_LABELS) as OverlayLayer[]).map((layer) => (
-              <button
-                key={layer}
-                onClick={() => toggleLayer(layer)}
-                className={`text-[10px] px-2 py-1 rounded-full border transition-colors ${
-                  activeLayers.has(layer)
-                    ? "bg-primary/10 text-primary border-primary/30"
-                    : "bg-muted/20 text-muted-foreground border-border/30 hover:bg-muted/40"
-                }`}
-              >
-                {OVERLAY_LAYER_LABELS[layer]}
-              </button>
-            ))}
-          </div>
+      {canShowAdvancedControls && (
+        <details className="rounded-lg border border-border/60 bg-muted/20 p-3">
+          <summary className="cursor-pointer text-xs font-semibold text-foreground">
+            Advanced overlay controls
+          </summary>
 
-          <div className="grid gap-2 rounded-xl border border-border/60 bg-muted/20 p-3 text-[11px] text-muted-foreground sm:grid-cols-2">
-            <p>videoWidth: {videoDims.width || trace.videoMeta.width}</p>
-            <p>videoHeight: {videoDims.height || trace.videoMeta.height}</p>
-            <p>canvasBacking: {canvasMetrics.backingWidth} x {canvasMetrics.backingHeight}</p>
-            <p>canvasCss: {canvasMetrics.cssWidth} x {canvasMetrics.cssHeight}</p>
-            <p>devicePixelRatio: {canvasMetrics.devicePixelRatio}</p>
-            <p>objectFit: contain</p>
-            <p>frameIndex: {currentFrameIndex}</p>
-            <p>timestamp: {currentFrame?.timestampMs ?? 0} ms</p>
-            <p>overlayTimestampSource: nearest_trace_frame</p>
-            <p>currentEvent: {currentEvent ? `${currentEvent.side}-${currentEvent.frameIndex}` : "none"}</p>
+          <div className="mt-3 space-y-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              className={`touch-target text-xs font-semibold ${
+                renderMode === 'debug' ? "text-orange-500" : "text-muted-foreground"
+              }`}
+              onClick={toggleMode}
+            >
+              {renderMode === 'clean' ? (
+                <><Eye className="mr-1 h-3 w-3" /> Switch to advanced view</>
+              ) : (
+                <><Bug className="mr-1 h-3 w-3" /> Return to caregiver view</>
+              )}
+            </Button>
+
+            {renderMode === "debug" && (
+              <>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {(Object.keys(OVERLAY_LAYER_LABELS) as OverlayLayer[]).map((layer) => (
+                    <button
+                      key={layer}
+                      onClick={() => toggleLayer(layer)}
+                      className={`rounded-full border px-2 py-1 text-[11px] transition-colors ${
+                        activeLayers.has(layer)
+                          ? "bg-primary/10 text-primary border-primary/30"
+                          : "bg-muted/20 text-muted-foreground border-border/30 hover:bg-muted/40"
+                      }`}
+                    >
+                      {OVERLAY_LAYER_LABELS[layer]}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="grid gap-2 rounded-xl border border-border/60 bg-muted/20 p-3 text-[11px] text-muted-foreground sm:grid-cols-2">
+                  <p>videoWidth: {videoDims.width || trace.videoMeta.width}</p>
+                  <p>videoHeight: {videoDims.height || trace.videoMeta.height}</p>
+                  <p>canvasBacking: {canvasMetrics.backingWidth} x {canvasMetrics.backingHeight}</p>
+                  <p>canvasCss: {canvasMetrics.cssWidth} x {canvasMetrics.cssHeight}</p>
+                  <p>devicePixelRatio: {canvasMetrics.devicePixelRatio}</p>
+                  <p>objectFit: contain</p>
+                  <p>frameIndex: {currentFrameIndex}</p>
+                  <p>timestamp: {currentFrame?.timestampMs ?? 0} ms</p>
+                  <p>overlayTimestampSource: nearest_trace_frame</p>
+                  <p>currentEvent: {currentEvent ? `${currentEvent.side}-${currentEvent.frameIndex}` : "none"}</p>
+                </div>
+              </>
+            )}
           </div>
-        </>
+        </details>
       )}
     </div>
   );

@@ -40,7 +40,7 @@ export default function AnalysisTracePanel({ trace, concernEvidence }: Props) {
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm flex items-center gap-2">
               <Eye className="h-4 w-4" />
-              Pipeline Summary
+              Analysis summary
             </CardTitle>
             <ChevronDown
               className={`h-4 w-4 text-muted-foreground transition-transform ${
@@ -51,10 +51,10 @@ export default function AnalysisTracePanel({ trace, concernEvidence }: Props) {
         </CardHeader>
         {openSection === "pipeline" && (
           <CardContent className="pt-3 space-y-3">
-            <div className="grid grid-cols-2 gap-3 text-xs">
+            <div className="grid grid-cols-2 gap-3 text-sm">
               <Stat label="Total frames" value={p.totalFrames.toString()} />
               <Stat
-                label="Usable frames"
+                label="Clear video moments used"
                 value={`${p.usableFrames} (${Math.round(p.usableFramePct * 100)}%)`}
                 warn={p.usableFramePct < 0.5}
               />
@@ -64,16 +64,16 @@ export default function AnalysisTracePanel({ trace, concernEvidence }: Props) {
                 value={`${p.leftSteps} / ${p.rightSteps}`}
               />
               <Stat
-                label="L/R tracking"
+                label="Left and right leg tracking"
                 value={p.lrTrackingStable ? "Stable" : "Unstable"}
                 warn={!p.lrTrackingStable}
               />
               <Stat
-                label="Assessment mode"
+                label="Result confidence level"
                 value={p.assessmentMode.replace("_", " ")}
               />
               <Stat
-                label="Confidence multiplier"
+                label="Confidence adjustment based on video quality"
                 value={`${(p.confidenceMultiplier * 100).toFixed(0)}%`}
                 warn={p.confidenceMultiplier < 0.7}
               />
@@ -95,7 +95,7 @@ export default function AnalysisTracePanel({ trace, concernEvidence }: Props) {
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm flex items-center gap-2">
               <BarChart3 className="h-4 w-4" />
-              Computed Metrics ({p.computedMetrics.length})
+              Measured movement signals ({p.computedMetrics.length})
             </CardTitle>
             <ChevronDown
               className={`h-4 w-4 text-muted-foreground transition-transform ${
@@ -113,10 +113,10 @@ export default function AnalysisTracePanel({ trace, concernEvidence }: Props) {
                   className="border border-border/30 rounded-lg p-2.5"
                 >
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-medium">
+                    <span className="text-sm font-medium">
                       {source.displayName}
                     </span>
-                    <span className="text-xs tabular-nums font-mono">
+                    <span className="text-sm tabular-nums font-mono">
                       {source.finalValue.toFixed(3)}
                       {source.unit && (
                         <span className="text-muted-foreground ml-0.5">
@@ -125,10 +125,10 @@ export default function AnalysisTracePanel({ trace, concernEvidence }: Props) {
                       )}
                     </span>
                   </div>
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     {source.inputSignal}
                   </p>
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     {source.computationMethod}
                   </p>
                   <div className="flex gap-2 mt-1">
@@ -166,7 +166,7 @@ export default function AnalysisTracePanel({ trace, concernEvidence }: Props) {
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm flex items-center gap-2 text-muted-foreground">
                 <XCircle className="h-4 w-4" />
-                Not Assessed ({trace.suppressedMetrics.length})
+                Areas we could not evaluate clearly ({trace.suppressedMetrics.length})
               </CardTitle>
               <ChevronDown
                 className={`h-4 w-4 text-muted-foreground transition-transform ${
@@ -180,13 +180,13 @@ export default function AnalysisTracePanel({ trace, concernEvidence }: Props) {
               {trace.suppressedMetrics.map((s) => (
                 <div
                   key={s.metricName}
-                  className="text-xs text-muted-foreground"
+                  className="text-sm text-muted-foreground"
                 >
                   <p className="font-medium text-foreground/70">
                     {s.displayName}
                   </p>
                   <p>{s.reason}</p>
-                  <p className="text-[10px]">
+                  <p className="text-xs">
                     Had {s.availableFrames} frames, needed{" "}
                     {s.requiredFrames}
                   </p>
@@ -206,7 +206,7 @@ export default function AnalysisTracePanel({ trace, concernEvidence }: Props) {
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm flex items-center gap-2">
               <Footprints className="h-4 w-4" />
-              Detection Evidence
+              Why this result was shown
             </CardTitle>
             <ChevronDown
               className={`h-4 w-4 text-muted-foreground transition-transform ${
@@ -223,7 +223,7 @@ export default function AnalysisTracePanel({ trace, concernEvidence }: Props) {
                 className="border border-border/30 rounded-lg p-3 space-y-1.5"
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium">
+                  <span className="text-sm font-medium">
                     {ev.displayName}
                   </span>
                   <Badge
@@ -239,13 +239,13 @@ export default function AnalysisTracePanel({ trace, concernEvidence }: Props) {
                     {ev.level}
                   </Badge>
                 </div>
-                <p className="text-[11px] text-foreground/80">
+                <p className="text-sm text-foreground/80">
                   {ev.explanation}
                 </p>
-                <div className="flex gap-2 text-[9px] text-muted-foreground">
+                <div className="flex gap-2 text-xs text-muted-foreground">
                   <span>Signal: {ev.signalDescription}</span>
                 </div>
-                <div className="flex gap-2 text-[9px] text-muted-foreground">
+                <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                   <span>Frames: {ev.frameRange}</span>
                   <span>·</span>
                   <span>{ev.frameCount} frames used</span>
@@ -255,7 +255,7 @@ export default function AnalysisTracePanel({ trace, concernEvidence }: Props) {
                   </span>
                 </div>
                 {ev.missingInfo && (
-                  <p className="text-[10px] text-amber-600 flex items-start gap-1 mt-1">
+                  <p className="mt-1 flex items-start gap-1 text-xs text-amber-600">
                     <AlertTriangle className="h-3 w-3 flex-shrink-0 mt-0.5" />
                     {ev.missingInfo}
                   </p>
@@ -287,7 +287,7 @@ export default function AnalysisTracePanel({ trace, concernEvidence }: Props) {
           </CardHeader>
           {openSection === "steps" && (
             <CardContent className="pt-3">
-              <div className="grid grid-cols-4 gap-1 text-[10px] font-medium text-muted-foreground mb-1">
+              <div className="mb-1 grid grid-cols-4 gap-1 text-xs font-medium text-muted-foreground">
                 <span>#</span>
                 <span>Side</span>
                 <span>Frame</span>
@@ -296,7 +296,7 @@ export default function AnalysisTracePanel({ trace, concernEvidence }: Props) {
               {trace.stepEvents.map((step, i) => (
                 <div
                   key={i}
-                  className="grid grid-cols-4 gap-1 text-[10px] py-0.5"
+                  className="grid grid-cols-4 gap-1 py-0.5 text-xs"
                 >
                   <span className="tabular-nums">{i + 1}</span>
                   <span
@@ -335,7 +335,7 @@ function Stat({
 }) {
   return (
     <div>
-      <p className="text-[10px] text-muted-foreground">{label}</p>
+      <p className="text-xs text-muted-foreground">{label}</p>
       <p
         className={`text-sm font-medium tabular-nums ${
           warn ? "text-amber-600" : ""

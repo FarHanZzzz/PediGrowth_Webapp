@@ -29,7 +29,7 @@ export default function RunProvenanceBadge({ run }: Props) {
         : AlertTriangle;
 
   return (
-    <Badge variant="outline" className={`gap-1.5 px-2.5 py-1 text-[10px] font-semibold ${styles}`}>
+    <Badge variant="outline" className={`gap-1.5 px-2.5 py-1 text-[11px] font-semibold whitespace-normal ${styles}`}>
       <Icon className="h-3.5 w-3.5" />
       {getRunLabel(run.classification)}
     </Badge>

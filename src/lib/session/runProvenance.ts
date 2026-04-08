@@ -94,10 +94,10 @@ export function classifyRunTone(classification: RunClassification): 'success' | 
 export function getRunLabel(classification: RunClassification): string {
   switch (classification) {
     case 'real_analysis':
-      return 'REAL ANALYSIS';
+      return 'Real analysis';
     case 'demo_fixture':
-      return 'DEMO FIXTURE';
+      return 'Demo fixture';
     case 'validation_failure':
-      return 'VALIDATION FAILURE';
+      return 'Could not complete analysis safely';
   }
 }
