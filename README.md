@@ -38,6 +38,21 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ### Backend (Python Pipeline)
 
+### Secure share-link setup
+
+Secure clinician handoff links use server-side Supabase storage.
+
+1. Ensure `.env.local` includes:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...
+```
+
+2. Apply Supabase migrations, including `002_shared_packets.sql`.
+3. Start the app and create links from the Results -> Clinician Packet tab.
+
 ```bash
 # Create virtual environment (Python 3.10+)
 python -m venv .venv

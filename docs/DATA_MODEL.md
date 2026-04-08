@@ -301,6 +301,25 @@ erDiagram
 
 ---
 
+### `shared_packets`
+| Field | Type | Constraints | PII |
+|-------|------|-------------|-----|
+| id | uuid | PK | No |
+| assessment_ref | text | application assessment id | No |
+| created_by | uuid | FK→users, nullable | No |
+| token_hash | text | unique sha256 hash | No |
+| payload | jsonb | caregiver + clinician + handoff bundle | No |
+| expires_at | timestamptz | required | No |
+| access_count | integer | default 0 | No |
+| max_accesses | integer | nullable | No |
+| is_active | boolean | default true | No |
+| last_accessed_at | timestamptz | nullable | No |
+| created_at | timestamptz | default now | No |
+
+**Security model:** No direct client access. Table is accessed only through server-side API routes using service-role credentials.
+
+---
+
 ### `navigator_threads`
 | Field | Type | Constraints | PII |
 |-------|------|-------------|-----|

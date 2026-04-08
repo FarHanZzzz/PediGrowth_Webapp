@@ -51,3 +51,7 @@ video/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Competition planning artifacts
+HSIL Winning Protocol.md
+docs/FARHAN_TANVIR_CHECKLIST.md

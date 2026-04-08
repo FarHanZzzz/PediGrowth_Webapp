@@ -6,12 +6,18 @@ import {
   AlertTriangle,
   ArrowLeft,
   BarChart3,
+  Check,
+  Clipboard,
+  Copy,
   Camera,
   Download,
+  Link2,
+  FileText,
   Info,
   MessageCircle,
   Microscope,
   PlayCircle,
+  Printer,
   RefreshCw,
   Video,
 } from "lucide-react";
@@ -31,12 +37,14 @@ import { buildKeyFrames } from "@/lib/trace/buildKeyFrames";
 import { summarizeDetectionPath } from "@/lib/trace/summarizeDetectionPath";
 import { buildRunProvenance } from "@/lib/session/runProvenance";
 import type { AnalysisSessionResult } from "@/lib/session/analysisSession";
+import { buildReportBundle } from "@/lib/reports";
 
-type ResultTab = "summary" | "video" | "evidence";
+type ResultTab = "summary" | "clinician" | "video" | "evidence";
 
 const TABS: { key: ResultTab; label: string; icon: typeof BarChart3 }[] = [
   { key: "summary", label: "Summary", icon: BarChart3 },
-  { key: "video", label: "Annotated Video", icon: PlayCircle },
+  { key: "clinician", label: "Clinician Packet", icon: FileText },
+  { key: "video", label: "Hero Video", icon: PlayCircle },
   { key: "evidence", label: "Evidence", icon: Microscope },
 ];
 
@@ -96,6 +104,11 @@ export default function ResultsPage() {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [jumpToFrameIndex, setJumpToFrameIndex] = useState<number | null>(null);
   const [exportAvailable, setExportAvailable] = useState(false);
+  const [copiedHandoff, setCopiedHandoff] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareExpiresAt, setShareExpiresAt] = useState<string | null>(null);
+  const [isCreatingShare, setIsCreatingShare] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
 
   useEffect(() => {
     // Try sessionStorage first (fast, same-session), then IndexedDB (persistent)
@@ -185,6 +198,130 @@ export default function ResultsPage() {
         : [],
     [result?.trace, result?.concerns]
   );
+
+  const reportBundle = useMemo(() => {
+    if (!result) return null;
+
+    if (result.reports?.caregiver && result.reports?.clinician && result.reports?.handoffText) {
+      return result.reports;
+    }
+
+    const bundle = buildReportBundle({
+      assessmentId: result.id,
+      nickname: result.session.nickname,
+      ageMonths: result.session.ageMonths,
+      analyzedAt: result.analyzedAt,
+      concerns: {
+        asymmetry: result.concerns.asymmetry,
+        irregularRhythm: result.concerns.irregularRhythm,
+        lateralInstability: result.concerns.lateralInstability,
+        pathDeviation: result.concerns.pathDeviation,
+        overallLevel: result.concerns.overallLevel,
+        followupPriority: result.concerns.followupPriority,
+        contextNotes: result.concerns.contextNotes,
+        suppressedDomains: result.concerns.suppressedDomains,
+        assessedDomains: result.concerns.assessedDomains,
+        qualityWarning: result.concerns.qualityWarning,
+        viewLabel: result.concerns.viewLabel,
+        assessmentModeLabel: result.concerns.assessmentModeLabel,
+        assessmentMode: result.concerns.assessmentMode,
+      },
+      quality: {
+        result: result.quality.result,
+        cameraAngle: result.quality.cameraAngle,
+        confidenceMultiplier: result.quality.confidenceMultiplier,
+        confidenceNotes: result.quality.confidenceNotes,
+        failureReasons: result.quality.failureReasons,
+        borderlineReasons: result.quality.borderlineReasons,
+        suppressedMetrics: result.quality.suppressedMetrics,
+      },
+      features: result.features,
+      trace: result.trace,
+    });
+
+    return {
+      caregiver: bundle.caregiverReport,
+      clinician: bundle.clinicianPacket,
+      handoffText: bundle.handoffText,
+    };
+  }, [result]);
+
+  function downloadClinicianPacket() {
+    if (!reportBundle) return;
+
+    const blob = new Blob([JSON.stringify(reportBundle.clinician, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `gaitbridge-clinician-packet-${resultId}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function copyHandoffText() {
+    if (!reportBundle) return;
+    try {
+      await navigator.clipboard.writeText(reportBundle.handoffText);
+      setCopiedHandoff(true);
+      window.setTimeout(() => setCopiedHandoff(false), 1800);
+    } catch {
+      setCopiedHandoff(false);
+    }
+  }
+
+  async function createShareLink() {
+    if (!reportBundle) return;
+    setIsCreatingShare(true);
+    setShareError(null);
+
+    try {
+      const response = await fetch("/api/share/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          assessmentId: resultId,
+          payload: {
+            caregiver: reportBundle.caregiver,
+            clinician: reportBundle.clinician,
+            handoffText: reportBundle.handoffText,
+          },
+          policy: {
+            expiresHours: 72,
+            maxAccesses: 25,
+          },
+        }),
+      });
+
+      const body = (await response.json()) as {
+        shareUrl?: string;
+        expiresAt?: string;
+        error?: string;
+      };
+
+      if (!response.ok || !body.shareUrl) {
+        throw new Error(body.error ?? "Failed to create share link.");
+      }
+
+      setShareUrl(body.shareUrl);
+      setShareExpiresAt(body.expiresAt ?? null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to create share link.";
+      setShareError(message);
+    } finally {
+      setIsCreatingShare(false);
+    }
+  }
+
+  async function copyShareUrl() {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+    } catch {
+      // Clipboard permissions vary across browsers; keep the URL visible for manual copy.
+    }
+  }
 
   if (!result) {
     return (
@@ -333,7 +470,7 @@ export default function ResultsPage() {
 
           <h1 data-display="true" className="text-3xl font-semibold">Results for {nickname}</h1>
           <p className="text-sm text-muted-foreground max-w-2xl mx-auto">
-            Toward-camera front-view observational screening with visible evidence, explicit confidence, and no hidden fallback.
+            GAITBRIDGE helps caregivers capture a usable walking video, explains what was observed in simple language, and creates a clinician-ready handoff packet for follow-up review.
           </p>
 
           <div className="flex flex-wrap items-center justify-center gap-2 text-[11px] text-muted-foreground">
@@ -350,14 +487,15 @@ export default function ResultsPage() {
             <div>
               <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Summary</p>
               <p className="mt-1 text-sm font-medium">
-                {result.concerns.overallLevel === "none"
-                  ? "No notable gait concern signals were detected in this clip."
-                  : "This clip shows movement patterns worth reviewing more closely."}
+                {reportBundle?.caregiver.observationsText ??
+                  (result.concerns.overallLevel === "none"
+                    ? "No notable gait concern signals were detected in this clip."
+                    : "This clip shows movement patterns worth reviewing more closely.")}
               </p>
             </div>
             <div>
               <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Confidence</p>
-              <p className="mt-1 text-sm">{result.quality.confidenceNotes}</p>
+              <p className="mt-1 text-sm">{reportBundle?.caregiver.confidenceText ?? result.quality.confidenceNotes}</p>
             </div>
             <div>
               <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">What was assessed</p>
@@ -475,6 +613,19 @@ export default function ResultsPage() {
 
             <HowAnalysisWorksPanel result={result} />
 
+            {reportBundle && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">Caregiver Guidance</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2 text-xs text-muted-foreground">
+                  <p><strong>Limitations:</strong> {reportBundle.caregiver.limitationsText}</p>
+                  <p><strong>Monitoring:</strong> {reportBundle.caregiver.monitoringGuidance}</p>
+                  <p><strong>Professional follow-up:</strong> {reportBundle.caregiver.professionalEvalGuidance}</p>
+                </CardContent>
+              </Card>
+            )}
+
             <div className="flex flex-wrap gap-3">
               <Button
                 variant="secondary"
@@ -587,6 +738,102 @@ export default function ResultsPage() {
                 </p>
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === "clinician" && reportBundle && (
+          <div className="space-y-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Clinician Packet</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-xs">
+                <p><strong>Structured notes:</strong> {reportBundle.clinician.structuredNotes ?? "No additional notes"}</p>
+                <p><strong>Assessment mode:</strong> {String(reportBundle.clinician.profileSummary.assessmentMode ?? "unknown")}</p>
+                <p><strong>View:</strong> {String(reportBundle.clinician.profileSummary.viewLabel ?? "unknown")}</p>
+                <p><strong>Created:</strong> {new Date(reportBundle.clinician.createdAt).toLocaleString()}</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Evidence and Limits</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-xs text-muted-foreground">
+                <p>
+                  <strong>Suppressed metrics:</strong>{" "}
+                  {Array.isArray(reportBundle.clinician.qualitySummary?.suppressedMetrics)
+                    ? (reportBundle.clinician.qualitySummary?.suppressedMetrics as string[]).join(", ") || "none"
+                    : "none"}
+                </p>
+                <p>
+                  <strong>Quality context:</strong>{" "}
+                  {String(reportBundle.clinician.qualitySummary?.confidenceNotes ?? result.quality.confidenceNotes)}
+                </p>
+                <p>
+                  <strong>Follow-up priority:</strong>{" "}
+                  {String((reportBundle.clinician.concernDomains as Record<string, unknown>).followupPriority ?? "routine")}
+                </p>
+              </CardContent>
+            </Card>
+
+            <div className="flex flex-wrap gap-3">
+              <Button variant="outline" className="flex-1 gap-2 text-xs" onClick={downloadClinicianPacket}>
+                <Download className="h-3.5 w-3.5" />
+                Download Packet JSON
+              </Button>
+              <Button variant="outline" className="flex-1 gap-2 text-xs" onClick={copyHandoffText}>
+                {copiedHandoff ? <Check className="h-3.5 w-3.5" /> : <Clipboard className="h-3.5 w-3.5" />}
+                {copiedHandoff ? "Handoff copied" : "Copy Handoff Text"}
+              </Button>
+              <Button variant="outline" className="flex-1 gap-2 text-xs" onClick={() => window.print()}>
+                <Printer className="h-3.5 w-3.5" />
+                Print Packet
+              </Button>
+            </div>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Secure Share Link</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-xs text-muted-foreground">
+                <p>
+                  Create a time-limited link for clinician review. Links expire in 72 hours and are capped at 25 opens.
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  <Button
+                    variant="outline"
+                    className="gap-2 text-xs"
+                    onClick={createShareLink}
+                    disabled={isCreatingShare}
+                  >
+                    <Link2 className="h-3.5 w-3.5" />
+                    {isCreatingShare ? "Creating link..." : "Create Share Link"}
+                  </Button>
+                  {shareUrl && (
+                    <Button variant="outline" className="gap-2 text-xs" onClick={copyShareUrl}>
+                      <Copy className="h-3.5 w-3.5" />
+                      Copy Share URL
+                    </Button>
+                  )}
+                </div>
+
+                {shareError && (
+                  <p className="text-red-600">{shareError}</p>
+                )}
+
+                {shareUrl && (
+                  <div className="rounded-md border bg-muted/40 p-3">
+                    <p className="break-all">{shareUrl}</p>
+                    {shareExpiresAt && (
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        Expires: {new Date(shareExpiresAt).toLocaleString()}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
         )}
 

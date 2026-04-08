@@ -21,13 +21,14 @@ import { getVideo, deleteVideo } from './videoStore';
 import { buildAnalysisTrace } from '@/lib/trace/buildAnalysisTrace';
 import type { MetricTraceInput } from '@/lib/trace/buildAnalysisTrace';
 import type { AnalysisTrace, SuppressedMetricEntry } from '@/lib/trace/traceTypes';
-import type { AssessmentMode } from '@/lib/types';
+import type { AssessmentMode, CaregiverReport, ClinicianPacket } from '@/lib/types';
 import {
   buildRunProvenance,
   type PoseModelId,
   type RunProvenance,
   type RunSourceType,
 } from './runProvenance';
+import { buildReportBundle } from '@/lib/reports';
 
 export type PipelineStage =
   | 'loading_video'
@@ -101,6 +102,11 @@ export interface AnalysisSessionResult {
   analyzedAt: string;
   // ── NEW: Evidence chain ──
   trace?: AnalysisTrace;
+  reports?: {
+    caregiver: CaregiverReport;
+    clinician: ClinicianPacket;
+    handoffText: string;
+  };
   videoUrl?: string;
 }
 
@@ -475,7 +481,7 @@ export async function runAnalysisPipeline(
         URL.revokeObjectURL(videoURL);
         video.remove();
 
-        return result;
+        return withGeneratedReports(result);
       } catch (err) {
         // Cleanup on inner failure
         URL.revokeObjectURL(videoURL);
@@ -513,7 +519,7 @@ function makeCannotAssessResult(
   assessment: any,
   run: RunProvenance,
 ): AnalysisSessionResult {
-  return {
+  return withGeneratedReports({
     id: 'r_' + Date.now().toString(36),
     session: { nickname, ageMonths },
     run,
@@ -563,7 +569,7 @@ function makeCannotAssessResult(
     isDemo: false,
     policyVersion: '0.4.0-graceful',
     analyzedAt: new Date().toISOString(),
-  };
+  });
 }
 
 function makeValidationFailureResult(
@@ -588,7 +594,7 @@ function makeValidationFailureResult(
     failureReason: reason,
   });
 
-  return {
+  return withGeneratedReports({
     id: 'r_' + Date.now().toString(36),
     session: { nickname, ageMonths },
     run,
@@ -638,7 +644,56 @@ function makeValidationFailureResult(
     isDemo: false,
     policyVersion: '0.4.0-graceful',
     analyzedAt: run.analyzedAt,
-  };
+  });
+}
+
+function withGeneratedReports(result: AnalysisSessionResult): AnalysisSessionResult {
+  try {
+    const bundle = buildReportBundle({
+      assessmentId: result.id,
+      nickname: result.session.nickname,
+      ageMonths: result.session.ageMonths,
+      analyzedAt: result.analyzedAt,
+      concerns: {
+        asymmetry: result.concerns.asymmetry,
+        irregularRhythm: result.concerns.irregularRhythm,
+        lateralInstability: result.concerns.lateralInstability,
+        pathDeviation: result.concerns.pathDeviation,
+        overallLevel: result.concerns.overallLevel,
+        followupPriority: result.concerns.followupPriority,
+        contextNotes: result.concerns.contextNotes,
+        suppressedDomains: result.concerns.suppressedDomains,
+        assessedDomains: result.concerns.assessedDomains,
+        qualityWarning: result.concerns.qualityWarning,
+        viewLabel: result.concerns.viewLabel,
+        assessmentModeLabel: result.concerns.assessmentModeLabel,
+        assessmentMode: result.concerns.assessmentMode,
+      },
+      quality: {
+        result: result.quality.result,
+        cameraAngle: result.quality.cameraAngle,
+        confidenceMultiplier: result.quality.confidenceMultiplier,
+        confidenceNotes: result.quality.confidenceNotes,
+        failureReasons: result.quality.failureReasons,
+        borderlineReasons: result.quality.borderlineReasons,
+        suppressedMetrics: result.quality.suppressedMetrics,
+      },
+      features: result.features,
+      trace: result.trace,
+    });
+
+    return {
+      ...result,
+      reports: {
+        caregiver: bundle.caregiverReport,
+        clinician: bundle.clinicianPacket,
+        handoffText: bundle.handoffText,
+      },
+    };
+  } catch (error) {
+    console.warn('Report generation failed (non-fatal):', error);
+    return result;
+  }
 }
 
 function errorMessage(err: unknown): string {

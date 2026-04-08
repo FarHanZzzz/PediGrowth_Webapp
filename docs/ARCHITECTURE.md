@@ -6,6 +6,8 @@
 
 ## 1. Architecture Overview
 
+**Competition message lock:** GAITBRIDGE helps caregivers capture a usable walking video, explains what was observed in simple language, and creates a clinician-ready handoff packet for follow-up review.
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    MOBILE BROWSER CLIENT                      │
