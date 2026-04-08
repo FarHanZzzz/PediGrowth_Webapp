@@ -10,15 +10,16 @@ Trains optimized XGBoost models for all 5 gait conditions using:
   6. Saves production-ready model files (.json)
 """
 
+import json
 import os
 import warnings
 import numpy as np
 import pandas as pd
 import xgboost as xgb
 from sklearn.model_selection import (
+    GroupKFold,
     StratifiedKFold,
     RandomizedSearchCV,
-    train_test_split,
 )
 from sklearn.metrics import (
     accuracy_score,
@@ -91,7 +92,120 @@ def patient_aware_split(df_path, test_size=0.2, random_state=42):
     return df[train_mask].copy(), df[test_mask].copy()
 
 
-def train_single_target(X_train, y_train, X_test, y_test, target_name, feature_cols):
+def _safe_rate(num: float, den: float) -> float:
+    return float(num / den) if den > 0 else 0.0
+
+
+def _metric_summary(values):
+    arr = np.asarray(values, dtype=float)
+    arr = arr[np.isfinite(arr)]
+    if arr.size == 0:
+        return {'mean': np.nan, 'std': np.nan, 'ci95': np.nan, 'n': 0}
+
+    mean = float(np.mean(arr))
+    std = float(np.std(arr, ddof=1)) if arr.size > 1 else 0.0
+    ci95 = float(1.96 * std / np.sqrt(arr.size)) if arr.size > 1 else 0.0
+    return {'mean': mean, 'std': std, 'ci95': ci95, 'n': int(arr.size)}
+
+
+def run_grouped_cv_audit(X, y, groups, target_name, best_params):
+    """
+    Patient-grouped CV audit with explicit leakage checks.
+    Outputs per-fold metrics and overlap counts for train/validation subjects.
+    """
+    if groups is None:
+        return None
+
+    unique_groups = np.unique(groups)
+    n_splits = min(5, len(unique_groups))
+    if n_splits < 2:
+        return None
+
+    gkf = GroupKFold(n_splits=n_splits)
+    fold_rows = []
+
+    for fold_idx, (tr_idx, va_idx) in enumerate(gkf.split(X, y, groups=groups), start=1):
+        X_tr, X_va = X[tr_idx], X[va_idx]
+        y_tr, y_va = y[tr_idx], y[va_idx]
+
+        train_groups = set(groups[tr_idx])
+        val_groups = set(groups[va_idx])
+        overlap = len(train_groups & val_groups)
+
+        tr_pos = np.sum(y_tr == 1)
+        tr_neg = np.sum(y_tr == 0)
+        scale_weight = tr_neg / tr_pos if tr_pos > 0 else 1.0
+
+        model = xgb.XGBClassifier(
+            **best_params,
+            scale_pos_weight=scale_weight,
+            random_state=42,
+            eval_metric='logloss',
+            tree_method='hist',
+            n_jobs=-1,
+        )
+        model.fit(X_tr, y_tr)
+
+        y_pred = model.predict(X_va)
+        y_prob = model.predict_proba(X_va)[:, 1]
+
+        cm = confusion_matrix(y_va, y_pred, labels=[0, 1])
+        tn, fp, fn, tp = cm.ravel()
+
+        fold_rows.append(
+            {
+                'fold': fold_idx,
+                'target': target_name,
+                'subject_overlap_count': overlap,
+                'accuracy': float(accuracy_score(y_va, y_pred)),
+                'precision': float(precision_score(y_va, y_pred, zero_division=0)),
+                'recall': float(recall_score(y_va, y_pred, zero_division=0)),
+                'f1': float(f1_score(y_va, y_pred, zero_division=0)),
+                'roc_auc': float(roc_auc_score(y_va, y_prob)) if len(np.unique(y_va)) > 1 else np.nan,
+                'sensitivity': _safe_rate(tp, tp + fn),
+                'specificity': _safe_rate(tn, tn + fp),
+                'ppv': _safe_rate(tp, tp + fp),
+                'npv': _safe_rate(tn, tn + fn),
+                'val_support': int(len(y_va)),
+            }
+        )
+
+    fold_df = pd.DataFrame(fold_rows)
+
+    summary = {
+        'target': target_name,
+        'n_splits': int(n_splits),
+        'subject_overlap_total': int(fold_df['subject_overlap_count'].sum()),
+        'leakage_pass': bool((fold_df['subject_overlap_count'] == 0).all()),
+        'accuracy': _metric_summary(fold_df['accuracy']),
+        'f1': _metric_summary(fold_df['f1']),
+        'roc_auc': _metric_summary(fold_df['roc_auc']),
+        'sensitivity': _metric_summary(fold_df['sensitivity']),
+        'specificity': _metric_summary(fold_df['specificity']),
+        'ppv': _metric_summary(fold_df['ppv']),
+        'npv': _metric_summary(fold_df['npv']),
+    }
+
+    folds_path = os.path.join(REPORT_DIR, f'{target_name}_grouped_cv_folds.csv')
+    summary_path = os.path.join(REPORT_DIR, f'{target_name}_grouped_cv_summary.json')
+    leakage_path = os.path.join(REPORT_DIR, f'{target_name}_leakage_audit.csv')
+
+    fold_df.to_csv(folds_path, index=False)
+    with open(summary_path, 'w', encoding='utf-8') as handle:
+        json.dump(summary, handle, indent=2)
+
+    leakage_df = fold_df[['fold', 'subject_overlap_count']].copy()
+    leakage_df.to_csv(leakage_path, index=False)
+
+    return {
+        'summary': summary,
+        'summary_path': summary_path,
+        'leakage_path': leakage_path,
+        'folds_path': folds_path,
+    }
+
+
+def train_single_target(X_train, y_train, X_test, y_test, target_name, feature_cols, train_groups):
     """
     Train an optimized XGBoost classifier for a single target.
     Uses RandomizedSearchCV with stratified K-fold.
@@ -178,6 +292,15 @@ def train_single_target(X_train, y_train, X_test, y_test, target_name, feature_c
     best_model.save_model(model_path)
     print(f"\n  Model saved: {model_path}")
 
+    # ── Patient-grouped CV audit + leakage audit ─────────────────────────────
+    grouped_cv = run_grouped_cv_audit(
+        X=X_train,
+        y=y_train,
+        groups=np.asarray(train_groups) if train_groups is not None else None,
+        target_name=target_name,
+        best_params=best_params,
+    )
+
     # ── Save report ───────────────────────────────────────────────────────────
     report = {
         'target': target_name,
@@ -190,6 +313,17 @@ def train_single_target(X_train, y_train, X_test, y_test, target_name, feature_c
         'train_samples': len(y_train),
         'test_samples': len(y_test),
         'train_positive_ratio': float(train_pos / len(y_train)),
+        'grouped_cv_accuracy_mean': grouped_cv['summary']['accuracy']['mean'] if grouped_cv else np.nan,
+        'grouped_cv_f1_mean': grouped_cv['summary']['f1']['mean'] if grouped_cv else np.nan,
+        'grouped_cv_auc_mean': grouped_cv['summary']['roc_auc']['mean'] if grouped_cv else np.nan,
+        'grouped_cv_sensitivity_mean': grouped_cv['summary']['sensitivity']['mean'] if grouped_cv else np.nan,
+        'grouped_cv_specificity_mean': grouped_cv['summary']['specificity']['mean'] if grouped_cv else np.nan,
+        'grouped_cv_ppv_mean': grouped_cv['summary']['ppv']['mean'] if grouped_cv else np.nan,
+        'grouped_cv_npv_mean': grouped_cv['summary']['npv']['mean'] if grouped_cv else np.nan,
+        'grouped_cv_report_path': grouped_cv['summary_path'] if grouped_cv else None,
+        'leakage_audit_path': grouped_cv['leakage_path'] if grouped_cv else None,
+        'leakage_overlap_total': grouped_cv['summary']['subject_overlap_total'] if grouped_cv else np.nan,
+        'leakage_pass': grouped_cv['summary']['leakage_pass'] if grouped_cv else False,
     }
     importance.to_csv(os.path.join(REPORT_DIR, f'{target_name}_feature_importance.csv'), index=False)
 
@@ -225,7 +359,8 @@ def main():
         report = train_single_target(
             X_train, y_train,
             X_test, y_test,
-            target, feature_cols
+            target, feature_cols,
+            train_df['patient_id'].astype(str).values,
         )
         all_reports.append(report)
 
@@ -243,7 +378,35 @@ def main():
     summary_df = pd.DataFrame(all_reports)
     summary_path = os.path.join(REPORT_DIR, 'training_summary.csv')
     summary_df.to_csv(summary_path, index=False)
+
+    grouped_cv_summary_path = os.path.join(REPORT_DIR, 'grouped_cv_summary.csv')
+    summary_df[
+        [
+            'target',
+            'grouped_cv_accuracy_mean',
+            'grouped_cv_f1_mean',
+            'grouped_cv_auc_mean',
+            'grouped_cv_sensitivity_mean',
+            'grouped_cv_specificity_mean',
+            'grouped_cv_ppv_mean',
+            'grouped_cv_npv_mean',
+            'grouped_cv_report_path',
+        ]
+    ].to_csv(grouped_cv_summary_path, index=False)
+
+    leakage_summary_path = os.path.join(REPORT_DIR, 'leakage_audit_summary.csv')
+    summary_df[
+        [
+            'target',
+            'leakage_pass',
+            'leakage_overlap_total',
+            'leakage_audit_path',
+        ]
+    ].to_csv(leakage_summary_path, index=False)
+
     print(f"\nTraining summary saved: {summary_path}")
+    print(f"Grouped CV summary saved: {grouped_cv_summary_path}")
+    print(f"Leakage audit summary saved: {leakage_summary_path}")
     print(f"Models directory: {MODEL_DIR}")
     print("\nAll models trained and ready for production deployment!")
 

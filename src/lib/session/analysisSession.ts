@@ -16,12 +16,15 @@ import { smoothLandmarks } from '@/lib/analysis/smoothing';
 import { correctLRSwaps } from '@/lib/analysis/swapCorrection';
 import { extractGaitFeatures } from '@/lib/analysis/extractGaitFeatures';
 import { detectFootStrikes, buildGaitCycles } from '@/lib/analysis/cycleDetection';
-import { computeConcernProfile } from '@/lib/scoring/computeConcernProfile';
+import { computeConcernProfile, type ComputedConcernResult } from '@/lib/scoring/computeConcernProfile';
+import { predictFromLandmarks, type LandmarkFrame as BackendLandmarkFrame, type XGBoostPrediction } from '@/lib/api/gaitPredictClient';
+import { POSE } from '@/lib/pose/poseTypes';
 import { getVideo, deleteVideo } from './videoStore';
 import { buildAnalysisTrace } from '@/lib/trace/buildAnalysisTrace';
 import type { MetricTraceInput } from '@/lib/trace/buildAnalysisTrace';
 import type { AnalysisTrace, SuppressedMetricEntry } from '@/lib/trace/traceTypes';
-import type { AssessmentMode, CaregiverReport, ClinicianPacket } from '@/lib/types';
+import type { AssessmentMode, CaregiverReport, ClinicianPacket, LandmarkFrame } from '@/lib/types';
+import type { VideoQualityAssessment } from '@/lib/quality/qualityTypes';
 import {
   buildRunProvenance,
   type PoseModelId,
@@ -107,6 +110,9 @@ export interface AnalysisSessionResult {
     clinician: ClinicianPacket;
     handoffText: string;
   };
+  trackingTelemetry?: TrackingTelemetry;
+  backendInference?: BackendInference;
+  inferenceDecision?: InferenceDecision;
   videoUrl?: string;
 }
 
@@ -124,6 +130,37 @@ interface MetricValue {
   unit?: string;
   limitedReason?: string;
   suppressed?: boolean;
+}
+
+interface TrackingTelemetry {
+  sampledFps: number;
+  totalFrames: number;
+  detectedFrames: number;
+  detectionRate: number;
+  visibleJointRatio: number;
+  temporalStabilityScore: number;
+  droppedFrameRatio: number;
+  cameraMotionScore: number;
+  processingLatencyMs: number;
+}
+
+interface BackendInference {
+  attempted: boolean;
+  available: boolean;
+  error: string | null;
+  predictions: XGBoostPrediction['predictions'] | null;
+}
+
+interface InferenceDecision {
+  source: 'hybrid' | 'client_only';
+  fusionPolicy: string;
+  fallbackReason: string | null;
+  modelVersion: string | null;
+  backendAvailable: boolean;
+  clientConcernProbability: number;
+  backendCompositeProbability: number | null;
+  fusedCompositeProbability: number;
+  confidenceBand: 'low' | 'watch' | 'elevated' | 'high';
 }
 
 const STAGES: { stage: PipelineStage; message: string }[] = [
@@ -174,9 +211,11 @@ export async function runAnalysisPipeline(
   onProgress?: (progress: PipelineProgress) => void,
   options: RunAnalysisOptions = {},
 ): Promise<AnalysisSessionResult> {
+  const runStart = performance.now();
   const validationMode = options.validationMode ?? false;
   const modelId: PoseModelId = 'mediapipe_full';
   const modelLabel = 'MediaPipe Full';
+  let sampleFps = 10;
 
   function report(stageIndex: number, stageProgress: number = 0) {
     const s = STAGES[stageIndex];
@@ -255,6 +294,11 @@ export async function runAnalysisPipeline(
         );
       }
 
+      sampleFps = computeAdaptiveSamplingFps(
+        assessment,
+        videoData.blob.size,
+      );
+
       // Stage 3: Extract full landmark sequence
       report(3);
 
@@ -283,7 +327,7 @@ export async function runAnalysisPipeline(
           video.oncanplay = () => resolve();
         });
 
-        const rawFrames = await extractLandmarkSequence(provider, video, 10);
+        const rawFrames = await extractLandmarkSequence(provider, video, sampleFps);
         report(3, 1);
 
         if (rawFrames.length === 0) {
@@ -300,17 +344,104 @@ export async function runAnalysisPipeline(
 
         // Stage 4: Smooth + swap correct + compute features
         report(4);
-        const smoothedFrames = smoothLandmarks(rawFrames, 0.3);
+        const smoothingAlpha = computeAdaptiveSmoothingAlpha(assessment);
+        const smoothedFrames = smoothLandmarks(rawFrames, smoothingAlpha, {
+          frameUsabilityPct: assessment.frameUsabilityPct,
+          bodyVisibility: assessment.bodyVisibility,
+          cameraMotion: assessment.cameraMotion,
+          minAlpha: 0.08,
+          maxAlpha: 0.72,
+        });
         const { frames: correctedFrames, swapCount } = correctLRSwaps(smoothedFrames);
         if (swapCount > 0) {
           console.log(`[Pedi-Growth] Corrected ${swapCount} L/R swap(s)`);
         }
         const features = extractGaitFeatures(correctedFrames, assessment.cameraAngle);
+
+        const detectedFrames = rawFrames.filter((frame) =>
+          frame.landmarks.some((lm) => lm.visibility >= 0.5),
+        ).length;
+        const visibleJointRatio = correctedFrames.length > 0
+          ? correctedFrames
+              .map((frame) => {
+                const visible = frame.landmarks.filter((lm) => lm.visibility >= 0.5).length;
+                return visible / Math.max(frame.landmarks.length, 1);
+              })
+              .reduce((acc, ratio) => acc + ratio, 0) / correctedFrames.length
+          : 0;
+        const detectionRate = rawFrames.length > 0 ? detectedFrames / rawFrames.length : 0;
+        const temporalStabilityScore = computeTemporalStabilityScore(correctedFrames);
+
+        const trackingTelemetry: TrackingTelemetry = {
+          sampledFps: sampleFps,
+          totalFrames: rawFrames.length,
+          detectedFrames,
+          detectionRate,
+          visibleJointRatio,
+          temporalStabilityScore,
+          droppedFrameRatio: 1 - detectionRate,
+          cameraMotionScore: assessment.cameraMotion,
+          processingLatencyMs: 0,
+        };
+
+        const toPair = (frameIndex: number, index: number): [number, number] => {
+          const lm = correctedFrames[frameIndex]?.landmarks[index];
+          if (!lm || lm.visibility < 0.2) return [0, 0];
+          return [lm.x, lm.y];
+        };
+
+        const backendFrames: BackendLandmarkFrame[] = correctedFrames.map((_, frameIndex) => ({
+          l_hip: toPair(frameIndex, POSE.LEFT_HIP),
+          l_knee: toPair(frameIndex, POSE.LEFT_KNEE),
+          l_ankle: toPair(frameIndex, POSE.LEFT_ANKLE),
+          r_hip: toPair(frameIndex, POSE.RIGHT_HIP),
+          r_knee: toPair(frameIndex, POSE.RIGHT_KNEE),
+          r_ankle: toPair(frameIndex, POSE.RIGHT_ANKLE),
+          l_shoulder: toPair(frameIndex, POSE.LEFT_SHOULDER),
+          r_shoulder: toPair(frameIndex, POSE.RIGHT_SHOULDER),
+        }));
+
+        let backendInference: BackendInference = {
+          attempted: true,
+          available: false,
+          error: null,
+          predictions: null,
+        };
+
+        try {
+          const backendResult = await predictFromLandmarks(backendFrames, {
+            Age: Math.max(1, Math.round(ageMonths / 12)),
+          });
+
+          if (backendResult?.success && backendResult.predictions) {
+            backendInference = {
+              attempted: true,
+              available: true,
+              error: null,
+              predictions: backendResult.predictions,
+            };
+          } else if (backendResult?.error) {
+            backendInference = {
+              attempted: true,
+              available: false,
+              error: backendResult.error,
+              predictions: null,
+            };
+          }
+        } catch (backendErr) {
+          backendInference = {
+            attempted: true,
+            available: false,
+            error: errorMessage(backendErr),
+            predictions: null,
+          };
+        }
         report(4, 1);
 
         // Stage 5: Score concerns
         report(5);
         const concerns = computeConcernProfile(features, assessment);
+        const inferenceDecision = computeInferenceDecision(concerns, backendInference);
         report(5, 1);
 
         // Stage 6: Package result + build evidence trace
@@ -410,7 +541,7 @@ export async function runAnalysisPipeline(
             videoWidth: video.videoWidth,
             videoHeight: video.videoHeight,
             videoDurationMs: video.duration * 1000,
-            fps: 10,
+            fps: sampleFps,
             metricResults: metricTraceInputs,
             suppressedResults: suppressedTraceEntries,
             provenance: run,
@@ -471,9 +602,16 @@ export async function runAnalysisPipeline(
           policyVersion: concerns.policyVersion,
           analyzedAt: new Date().toISOString(),
           trace,
+          trackingTelemetry,
+          backendInference,
+          inferenceDecision,
           // NOTE: No videoUrl here — blob URLs don't survive page navigation.
           // The results page loads video from IndexedDB directly.
         };
+
+        if (result.trackingTelemetry) {
+          result.trackingTelemetry.processingLatencyMs = Math.round(performance.now() - runStart);
+        }
 
         report(6, 1);
 
@@ -700,4 +838,152 @@ function errorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   if (typeof err === 'string') return err;
   return 'Unknown error';
+}
+
+function computeAdaptiveSamplingFps(
+  assessment: VideoQualityAssessment,
+  videoBytes: number,
+): number {
+  const cpuCores = typeof navigator !== 'undefined'
+    ? Math.max(1, navigator.hardwareConcurrency || 4)
+    : 4;
+  const cpuScore = clamp(cpuCores / 8, 0.35, 1);
+
+  const qualityScore = clamp(
+    assessment.frameUsabilityPct * 0.6 + assessment.bodyVisibility * 0.4,
+    0.2,
+    1,
+  );
+
+  // Approximate compressed bitrate for coarse complexity scaling.
+  const duration = Math.max(assessment.durationSeconds, 1);
+  const approxMbps = (videoBytes * 8) / (duration * 1_000_000);
+  const decodePenalty = clamp((approxMbps - 5) / 25, 0, 0.35);
+
+  let fps = 8 + Math.round((cpuScore * 0.45 + qualityScore * 0.55) * 12);
+
+  // If we detected too few cycles on a usable video, sample denser.
+  if (assessment.detectedGaitCycles < 2 && assessment.frameUsabilityPct >= 0.35) {
+    fps += 2;
+  }
+
+  // High camera shake reduces effective information gain from very high FPS.
+  if (assessment.cameraMotion > 0.65) {
+    fps -= 2;
+  }
+
+  fps = Math.round(fps * (1 - decodePenalty));
+  return clamp(Math.max(8, fps), 8, 20);
+}
+
+function computeAdaptiveSmoothingAlpha(assessment: VideoQualityAssessment): number {
+  const quality = clamp(assessment.frameUsabilityPct * 0.55 + assessment.bodyVisibility * 0.45, 0.2, 1);
+  const motionPenalty = clamp(1 - assessment.cameraMotion * 0.45, 0.6, 1);
+  const alpha = (0.2 + quality * 0.24) * motionPenalty;
+  return clamp(alpha, 0.12, 0.48);
+}
+
+function computeTemporalStabilityScore(frames: LandmarkFrame[]): number {
+  if (frames.length < 2) return 0;
+
+  const joints = [
+    POSE.LEFT_HIP,
+    POSE.RIGHT_HIP,
+    POSE.LEFT_KNEE,
+    POSE.RIGHT_KNEE,
+    POSE.LEFT_ANKLE,
+    POSE.RIGHT_ANKLE,
+  ];
+
+  let totalDelta = 0;
+  let count = 0;
+
+  for (let i = 1; i < frames.length; i++) {
+    const prev = frames[i - 1];
+    const curr = frames[i];
+
+    for (const idx of joints) {
+      const prevLm = prev.landmarks[idx];
+      const currLm = curr.landmarks[idx];
+      if (!prevLm || !currLm) continue;
+      if (prevLm.visibility < 0.35 || currLm.visibility < 0.35) continue;
+
+      const delta = Math.hypot(currLm.x - prevLm.x, currLm.y - prevLm.y);
+      totalDelta += delta;
+      count += 1;
+    }
+  }
+
+  if (count === 0) return 0;
+  const avgDelta = totalDelta / count;
+  return clamp(1 - avgDelta * 7.5, 0, 1);
+}
+
+function computeInferenceDecision(
+  concerns: ComputedConcernResult,
+  backendInference: BackendInference,
+): InferenceDecision {
+  const clientConcernProbability = concernLevelToProbability(concerns.overallLevel);
+  const backendCompositeProbability = backendInference.predictions?.composite_risk?.probability ?? null;
+
+  if (backendInference.available && backendCompositeProbability !== null) {
+    const fusedCompositeProbability = clamp(
+      backendCompositeProbability * 0.6 + clientConcernProbability * 0.4,
+      0,
+      1,
+    );
+
+    return {
+      source: 'hybrid',
+      fusionPolicy: '0.60 backend composite risk + 0.40 client concern proxy',
+      fallbackReason: null,
+      modelVersion: 'xgb_v1_bundle',
+      backendAvailable: true,
+      clientConcernProbability,
+      backendCompositeProbability,
+      fusedCompositeProbability,
+      confidenceBand: probabilityToBand(fusedCompositeProbability),
+    };
+  }
+
+  const fallbackReason =
+    backendInference.error ??
+    'Backend model inference was unavailable, so confidence bands use client-side concern mapping only.';
+
+  return {
+    source: 'client_only',
+    fusionPolicy: 'client concern proxy only (backend unavailable)',
+    fallbackReason,
+    modelVersion: null,
+    backendAvailable: false,
+    clientConcernProbability,
+    backendCompositeProbability: null,
+    fusedCompositeProbability: clientConcernProbability,
+    confidenceBand: probabilityToBand(clientConcernProbability),
+  };
+}
+
+function concernLevelToProbability(level: string): number {
+  switch (level) {
+    case 'significant':
+      return 0.82;
+    case 'moderate':
+      return 0.62;
+    case 'mild':
+      return 0.36;
+    case 'none':
+    default:
+      return 0.14;
+  }
+}
+
+function probabilityToBand(probability: number): InferenceDecision['confidenceBand'] {
+  if (probability >= 0.75) return 'high';
+  if (probability >= 0.55) return 'elevated';
+  if (probability >= 0.3) return 'watch';
+  return 'low';
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }

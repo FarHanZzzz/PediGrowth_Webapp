@@ -10,6 +10,14 @@
 import type { LandmarkFrame, Landmark } from '@/lib/types';
 import { MIN_VISIBILITY } from '@/lib/pose/poseTypes';
 
+export interface TemporalSmoothingOptions {
+  frameUsabilityPct?: number;
+  bodyVisibility?: number;
+  cameraMotion?: number;
+  minAlpha?: number;
+  maxAlpha?: number;
+}
+
 // ══════════════════════════════════════════════════════════════
 // CONFIDENCE-AWARE EMA
 // ══════════════════════════════════════════════════════════════
@@ -29,12 +37,13 @@ import { MIN_VISIBILITY } from '@/lib/pose/poseTypes';
 export function smoothLandmarks(
   frames: LandmarkFrame[],
   alpha: number = 0.3,
+  options: TemporalSmoothingOptions = {},
 ): LandmarkFrame[] {
   if (frames.length === 0) return [];
   if (frames.length === 1) return [...frames];
 
   // First pass: confidence-aware EMA
-  const smoothed = confidenceAwareEMA(frames, alpha);
+  const smoothed = confidenceAwareEMA(frames, alpha, options);
 
   // Second pass: short-gap interpolation
   return interpolateGaps(smoothed, 3);
@@ -48,8 +57,18 @@ export function smoothLandmarks(
 function confidenceAwareEMA(
   frames: LandmarkFrame[],
   baseAlpha: number,
+  options: TemporalSmoothingOptions,
 ): LandmarkFrame[] {
   const result: LandmarkFrame[] = [frames[0]];
+
+  const frameUsability = clamp(options.frameUsabilityPct ?? 0.8, 0.2, 1);
+  const bodyVisibility = clamp(options.bodyVisibility ?? 0.8, 0.2, 1);
+  const cameraMotion = clamp(options.cameraMotion ?? 0.3, 0, 1);
+  const minAlpha = options.minAlpha ?? 0.08;
+  const maxAlpha = options.maxAlpha ?? 0.7;
+
+  const qualityWeight = clamp(0.55 * frameUsability + 0.45 * bodyVisibility, 0.3, 1);
+  const motionPenalty = clamp(1 - cameraMotion * 0.35, 0.65, 1);
 
   for (let i = 1; i < frames.length; i++) {
     const prev = result[i - 1];
@@ -63,8 +82,18 @@ function confidenceAwareEMA(
       // - High visibility (≥ 0.5): use full alpha → trust current measurement
       // - Low visibility (< 0.5): reduce alpha → lean on previous position
       // - Very low (< 0.15): near-zero alpha → almost entirely previous position
-      const visRatio = Math.min(1, lm.visibility / MIN_VISIBILITY);
-      const effectiveAlpha = baseAlpha * visRatio;
+      const visRatio = clamp(lm.visibility / MIN_VISIBILITY, 0.05, 1);
+
+      // If movement between consecutive frames is strong, preserve temporal detail
+      // by letting alpha increase (avoid over-smoothing real gait motion).
+      const movementDelta = Math.abs(lm.x - prevLm.x) + Math.abs(lm.y - prevLm.y);
+      const movementBoost = clamp(movementDelta * 8, 0, 0.45);
+
+      const effectiveAlpha = clamp(
+        baseAlpha * visRatio * qualityWeight * motionPenalty + movementBoost,
+        minAlpha,
+        maxAlpha,
+      );
 
       return {
         x: ema(prevLm.x, lm.x, effectiveAlpha),
@@ -86,6 +115,10 @@ function confidenceAwareEMA(
 
 function ema(prev: number, curr: number, alpha: number): number {
   return alpha * curr + (1 - alpha) * prev;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
 
 // ══════════════════════════════════════════════════════════════

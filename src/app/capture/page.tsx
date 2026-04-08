@@ -23,6 +23,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { storeVideo } from "@/lib/session/videoStore";
 import { getApprovedHeroClip, getHeroClipDefinition } from "@/lib/demo/heroManifest";
+import { runCapturePreflight, type CapturePreflightResult } from "@/lib/quality/capturePreflight";
 
 const TIPS = [
   { text: "Record from the front — have your child walk toward or away from the camera", do: true },
@@ -64,6 +65,9 @@ export default function CapturePage() {
   const [sourceType, setSourceType] = useState<"upload" | "manifest_hero">("upload");
   const [sourceClipId, setSourceClipId] = useState<string | null>(null);
   const [approvedForDemo, setApprovedForDemo] = useState<boolean | null>(null);
+  const [isRunningPreflight, setIsRunningPreflight] = useState(false);
+  const [preflightResult, setPreflightResult] = useState<CapturePreflightResult | null>(null);
+  const [preflightError, setPreflightError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const heroClip = getHeroClipDefinition();
   const approvedHeroClip = getApprovedHeroClip();
@@ -75,6 +79,42 @@ export default function CapturePage() {
       router.replace("/start");
     }
   }, [router]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!videoFile) {
+      setIsRunningPreflight(false);
+      setPreflightResult(null);
+      setPreflightError(null);
+      return;
+    }
+
+    setIsRunningPreflight(true);
+    setPreflightResult(null);
+    setPreflightError(null);
+
+    runCapturePreflight(videoFile)
+      .then((result) => {
+        if (!cancelled) {
+          setPreflightResult(result);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setPreflightError(error instanceof Error ? error.message : "Unable to run preflight quality checks.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsRunningPreflight(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [videoFile]);
 
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -89,6 +129,8 @@ export default function CapturePage() {
     setSourceClipId(null);
     setApprovedForDemo(null);
     setHeroClipError(null);
+    setPreflightResult(null);
+    setPreflightError(null);
     setActiveTab("review");
   }
 
@@ -116,6 +158,8 @@ export default function CapturePage() {
       setSourceType("manifest_hero");
       setSourceClipId(approvedHeroClip.clipId);
       setApprovedForDemo(true);
+      setPreflightResult(null);
+      setPreflightError(null);
       setActiveTab("review");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to load the approved hero clip.";
@@ -166,6 +210,8 @@ export default function CapturePage() {
     if (videoURL) URL.revokeObjectURL(videoURL);
     setVideoFile(null);
     setVideoURL(null);
+    setPreflightResult(null);
+    setPreflightError(null);
     setActiveTab("guide");
   }
 
@@ -396,10 +442,67 @@ export default function CapturePage() {
               </CardContent>
             </Card>
 
+            <Card className="bg-surface-container-lowest/80">
+              <CardContent className="space-y-3 p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Preflight Quality Check
+                  </p>
+                  {isRunningPreflight ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-secondary/15 px-2 py-0.5 text-[10px] font-semibold text-foreground/80">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Checking...
+                    </span>
+                  ) : (
+                    <span
+                      className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                        preflightResult?.overall === "pass"
+                          ? "bg-green-100 text-green-700"
+                          : preflightResult?.overall === "fail"
+                            ? "bg-rose-100 text-rose-700"
+                            : "bg-amber-100 text-amber-700"
+                      }`}
+                    >
+                      {preflightResult?.overall === "pass"
+                        ? "Ready"
+                        : preflightResult?.overall === "fail"
+                          ? "Retake recommended"
+                          : "Usable with caution"}
+                    </span>
+                  )}
+                </div>
+
+                {preflightResult && (
+                  <div className="grid grid-cols-2 gap-2 text-[11px] text-foreground/80 sm:grid-cols-4">
+                    <p className="rounded-xl bg-muted/50 px-2 py-1.5">{preflightResult.durationSeconds.toFixed(1)}s</p>
+                    <p className="rounded-xl bg-muted/50 px-2 py-1.5">{preflightResult.resolution.width}x{preflightResult.resolution.height}</p>
+                    <p className="rounded-xl bg-muted/50 px-2 py-1.5">Light {Math.round(preflightResult.brightnessScore * 100)}%</p>
+                    <p className="rounded-xl bg-muted/50 px-2 py-1.5">Motion {Math.round(preflightResult.motionScore * 100)}%</p>
+                  </div>
+                )}
+
+                {preflightError && (
+                  <p className="text-[11px] text-destructive">{preflightError}</p>
+                )}
+
+                {preflightResult?.recommendations.length ? (
+                  <div className="space-y-1 text-[11px] text-muted-foreground">
+                    {preflightResult.recommendations.slice(0, 2).map((note) => (
+                      <p key={note}>- {note}</p>
+                    ))}
+                  </div>
+                ) : (
+                  preflightResult && (
+                    <p className="text-[11px] text-muted-foreground">Preflight passed. Continue to analysis when ready.</p>
+                  )
+                )}
+              </CardContent>
+            </Card>
+
             <div className="space-y-3">
               <Button
                 onClick={handleAnalyze}
-                disabled={isStoring}
+                disabled={isStoring || isRunningPreflight}
                 size="lg"
                 className="touch-target w-full gap-2 text-base font-semibold"
                 id="capture-analyze"
@@ -409,9 +512,14 @@ export default function CapturePage() {
                     <Loader2 className="h-4 w-4 animate-spin" />
                     Preparing...
                   </>
+                ) : isRunningPreflight ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Running preflight checks...
+                  </>
                 ) : (
                   <>
-                    Analyze This Video
+                    {preflightResult?.overall === "fail" ? "Analyze Anyway" : "Analyze This Video"}
                     <ArrowRight className="h-4 w-4" />
                   </>
                 )}

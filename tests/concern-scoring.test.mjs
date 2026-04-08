@@ -4,6 +4,9 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 // Inline concern threshold logic matching src/lib/policy/concern-thresholds.ts
 function getConcernLevel(value, thresholds) {
@@ -13,8 +16,13 @@ function getConcernLevel(value, thresholds) {
   return "none";
 }
 
-const ASYMMETRY_THRESHOLDS = { mild: 0.08, moderate: 0.15, significant: 0.25 };
-const TRUNK_SWAY_THRESHOLDS = { mild: 3.0, moderate: 5.0, significant: 8.0 };
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const thresholdPath = path.resolve(__dirname, "../src/lib/policy/concern-thresholds.json");
+const thresholdData = JSON.parse(fs.readFileSync(thresholdPath, "utf8"));
+
+const ASYMMETRY_THRESHOLDS = thresholdData.concernThresholds.asymmetry;
+const LATERAL_INSTABILITY_THRESHOLDS = thresholdData.concernThresholds.lateralInstability;
 
 describe("Concern Scoring", () => {
   describe("Asymmetry", () => {
@@ -24,34 +32,34 @@ describe("Concern Scoring", () => {
     });
 
     it("returns 'mild' for subtle asymmetry", () => {
-      assert.equal(getConcernLevel(0.08, ASYMMETRY_THRESHOLDS), "mild");
       assert.equal(getConcernLevel(0.12, ASYMMETRY_THRESHOLDS), "mild");
+      assert.equal(getConcernLevel(0.18, ASYMMETRY_THRESHOLDS), "mild");
     });
 
     it("returns 'moderate' for notable asymmetry", () => {
-      assert.equal(getConcernLevel(0.15, ASYMMETRY_THRESHOLDS), "moderate");
-      assert.equal(getConcernLevel(0.20, ASYMMETRY_THRESHOLDS), "moderate");
+      assert.equal(getConcernLevel(0.22, ASYMMETRY_THRESHOLDS), "moderate");
+      assert.equal(getConcernLevel(0.3, ASYMMETRY_THRESHOLDS), "moderate");
     });
 
     it("returns 'significant' for severe asymmetry", () => {
-      assert.equal(getConcernLevel(0.25, ASYMMETRY_THRESHOLDS), "significant");
+      assert.equal(getConcernLevel(0.35, ASYMMETRY_THRESHOLDS), "significant");
       assert.equal(getConcernLevel(0.50, ASYMMETRY_THRESHOLDS), "significant");
     });
   });
 
-  describe("Trunk Sway", () => {
-    it("classifies trunk sway correctly across thresholds", () => {
-      assert.equal(getConcernLevel(1.0, TRUNK_SWAY_THRESHOLDS), "none");
-      assert.equal(getConcernLevel(3.0, TRUNK_SWAY_THRESHOLDS), "mild");
-      assert.equal(getConcernLevel(5.0, TRUNK_SWAY_THRESHOLDS), "moderate");
-      assert.equal(getConcernLevel(10.0, TRUNK_SWAY_THRESHOLDS), "significant");
+  describe("Lateral Instability", () => {
+    it("classifies lateral instability correctly across thresholds", () => {
+      assert.equal(getConcernLevel(0.05, LATERAL_INSTABILITY_THRESHOLDS), "none");
+      assert.equal(getConcernLevel(0.08, LATERAL_INSTABILITY_THRESHOLDS), "mild");
+      assert.equal(getConcernLevel(0.15, LATERAL_INSTABILITY_THRESHOLDS), "moderate");
+      assert.equal(getConcernLevel(0.3, LATERAL_INSTABILITY_THRESHOLDS), "significant");
     });
   });
 
   describe("Edge Cases", () => {
     it("handles exactly at threshold boundaries", () => {
-      assert.equal(getConcernLevel(0.08, ASYMMETRY_THRESHOLDS), "mild");
-      assert.equal(getConcernLevel(0.0799, ASYMMETRY_THRESHOLDS), "none");
+      assert.equal(getConcernLevel(0.12, ASYMMETRY_THRESHOLDS), "mild");
+      assert.equal(getConcernLevel(0.1199, ASYMMETRY_THRESHOLDS), "none");
     });
 
     it("handles negative values", () => {

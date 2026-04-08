@@ -85,6 +85,12 @@ export default function HowAnalysisWorksPanel({ result }: Props) {
         <div className="rounded-xl bg-muted/20 p-3">
           <p className="text-xs font-semibold">Why confidence is {result.concerns.qualityWarning ? "limited" : "stronger"}</p>
           <p className="mt-1 text-xs text-muted-foreground">{result.quality.confidenceNotes}</p>
+          {result.trackingTelemetry && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              This run detected landmarks in {Math.round(result.trackingTelemetry.detectionRate * 100)}% of sampled frames,
+              with {Math.round(result.trackingTelemetry.visibleJointRatio * 100)}% average visible joints.
+            </p>
+          )}
         </div>
       </CardContent>
     </Card>

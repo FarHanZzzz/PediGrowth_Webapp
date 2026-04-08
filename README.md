@@ -125,6 +125,39 @@ node --test tests/
 node --test tests/routing-rules.test.mjs
 ```
 
+## Robustness Benchmark and Release Gate
+
+Use the robustness suite to stress adverse capture conditions and block releases when quality degrades beyond configured tolerances.
+
+```bash
+# Quick local smoke benchmark (reduced scenarios)
+npm run benchmark:robustness:quick
+
+# Promote latest quick summary as benchmark baseline (PowerShell)
+Copy-Item outputs/robustness_benchmark_quick/benchmark_summary.json data/robustness/benchmark_baseline.json -Force
+
+# Full benchmark suite
+npm run benchmark:robustness
+
+# Gate against baseline summary (fails with non-zero exit on regression)
+npm run gate:robustness
+
+# Gate against baseline using quick benchmark artifacts
+npm run gate:robustness:quick
+```
+
+Gate policy notes:
+- The gate now validates both metric degradation and scenario execution status.
+- A scenario with `status != ok` fails the gate unless explicitly allow-listed in `data/robustness/robustness_gate_thresholds.json`.
+- The gate also enforces baseline coverage so missing current scenarios in baseline are treated as a release-blocking failure.
+- Baseline summaries should be generated from calibrated runs where all required scenarios complete successfully.
+
+Artifacts:
+- Current benchmark summary: `outputs/robustness_benchmark/benchmark_summary.json`
+- Current gate report: `outputs/robustness_benchmark/gate_report.json`
+- Gate thresholds: `data/robustness/robustness_gate_thresholds.json`
+- Baseline benchmark summary (to provide): `data/robustness/benchmark_baseline.json`
+
 ## ML Pipeline
 
 The XGBoost models provide screening-level risk predictions for:
@@ -136,6 +169,16 @@ The XGBoost models provide screening-level risk predictions for:
 - **Composite Risk** — Overall screening score
 
 > See `data/training_reports/model_evaluation.md` for an honest assessment of model limitations.
+
+### Training Evaluation Artifacts
+
+The training pipeline now emits grouped patient-level cross-validation and leakage audit artifacts:
+
+- `data/training_reports/*_grouped_cv_folds.csv`
+- `data/training_reports/*_grouped_cv_summary.json`
+- `data/training_reports/*_leakage_audit.csv`
+- `data/training_reports/grouped_cv_summary.csv`
+- `data/training_reports/leakage_audit_summary.csv`
 
 ## Clinical Safety
 

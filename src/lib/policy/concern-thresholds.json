@@ -1,0 +1,9 @@
+{
+  "concernThresholds": {
+    "asymmetry": { "mild": 0.12, "moderate": 0.22, "significant": 0.35 },
+    "irregularRhythm": { "mild": 0.15, "moderate": 0.25, "significant": 0.4 },
+    "lateralInstability": { "mild": 0.08, "moderate": 0.15, "significant": 0.25 },
+    "pathDeviation": { "mild": 0.1, "moderate": 0.2, "significant": 0.35 }
+  },
+  "stepTimingConcernThreshold": 0.85
+}

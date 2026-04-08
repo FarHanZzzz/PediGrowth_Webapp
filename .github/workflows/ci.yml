@@ -18,8 +18,16 @@ jobs:
           node-version: 24
           cache: npm
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Install dependencies
         run: npm ci
+
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements-pipeline.txt
 
       - name: Lint
         run: npm run lint
@@ -29,6 +37,12 @@ jobs:
 
       - name: Test
         run: npm run test
+
+      - name: Robustness benchmark (quick)
+        run: npm run benchmark:robustness:quick
+
+      - name: Robustness gate (quick)
+        run: npm run gate:robustness:quick
 
       - name: Build
         run: npm run build

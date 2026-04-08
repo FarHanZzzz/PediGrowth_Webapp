@@ -3,6 +3,7 @@
 // MVP: only frontal-valid concern domains are active.
 
 import type { ConcernLevel, FollowupPriority, ConcernProfile, GaitFeatureSet, QualityResult } from '@/lib/types';
+import concernThresholdsData from './concern-thresholds.json';
 
 const POLICY_VERSION = '0.4.0-graceful';
 
@@ -11,21 +12,21 @@ const POLICY_VERSION = '0.4.0-graceful';
 
 export const CONCERN_THRESHOLDS = {
   // Frontal asymmetry (combined hip-height + shoulder tilt score, 0-1)
-  asymmetry: { mild: 0.12, moderate: 0.22, significant: 0.35 },
+  asymmetry: concernThresholdsData.concernThresholds.asymmetry,
 
   // Stride regularity (coefficient of variation, 0+)
-  irregularRhythm: { mild: 0.15, moderate: 0.25, significant: 0.40 },
+  irregularRhythm: concernThresholdsData.concernThresholds.irregularRhythm,
 
   // Lateral trunk sway (normalized SD, 0-1)
-  lateralInstability: { mild: 0.08, moderate: 0.15, significant: 0.25 },
+  lateralInstability: concernThresholdsData.concernThresholds.lateralInstability,
 
   // Path deviation (normalized residual score, 0-1)
-  pathDeviation: { mild: 0.10, moderate: 0.20, significant: 0.35 },
-} as const;
+  pathDeviation: concernThresholdsData.concernThresholds.pathDeviation,
+};
 
 // Step timing symmetry is an input to asymmetry concern but not its own domain.
 // If stepTimingSymmetry < 0.85, it contributes to composite asymmetry concern.
-export const STEP_TIMING_CONCERN_THRESHOLD = 0.85;
+export const STEP_TIMING_CONCERN_THRESHOLD = concernThresholdsData.stepTimingConcernThreshold;
 
 function classifyConcern(
   value: number,
