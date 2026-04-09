@@ -9,7 +9,6 @@ import type { GaitFeatureSet, ConcernLevel, AssessmentMode, FollowupPriority } f
 import { scoreConcerns } from '@/lib/policy/concern-thresholds';
 import type { VideoQualityAssessment } from '@/lib/quality/qualityTypes';
 import {
-  MIN_CONCERN_CONFIDENCE,
   BEST_EFFORT_CONCERN_CAP,
   BEST_EFFORT_PRIORITY_CAP,
   isLimitedAssessment,
@@ -75,12 +74,6 @@ export function computeConcernProfile(
   let irregularRhythm = profile.irregularRhythmLevel;
   let lateralInstability = profile.lateralInstabilityLevel;
   let pathDeviation = profile.pathDeviationLevel;
-
-  // Check per-metric confidence (with multiplier applied)
-  const effectiveAsymConf = features.frontalAsymmetry.confidence * confMultiplier;
-  const effectiveRhythmConf = features.strideRegularity.confidence * confMultiplier;
-  const effectiveSwayConf = features.lateralTrunkSway.confidence * confMultiplier;
-  const effectivePathConf = features.pathDeviation.confidence * confMultiplier;
 
   // Also suppress if metric is in quality.suppressedMetrics
   const suppressed = new Set(quality.suppressedMetrics);

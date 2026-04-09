@@ -54,8 +54,6 @@ const thresholdData = JSON.parse(fs.readFileSync(thresholdPath, "utf8"));
 
 const ASYMMETRY_THRESHOLDS = thresholdData.concernThresholds.asymmetry;
 const LATERAL_INSTABILITY_THRESHOLDS = thresholdData.concernThresholds.lateralInstability;
-const IRREGULAR_RHYTHM_THRESHOLDS = thresholdData.concernThresholds.irregularRhythm;
-const PATH_DEVIATION_THRESHOLDS = thresholdData.concernThresholds.pathDeviation;
 const STEP_TIMING_THRESHOLD = thresholdData.stepTimingConcernThreshold;
 
 describe("Concern Scoring", () => {

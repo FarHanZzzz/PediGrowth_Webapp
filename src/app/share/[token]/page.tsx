@@ -100,7 +100,7 @@ export default function SharedPacketPage() {
   const clinician = payload.clinician;
 
   return (
-    <div className="min-h-dvh bg-gradient-to-b from-background to-muted/30 px-4 py-8">
+    <div className="min-h-dvh bg-linear-to-b from-background to-muted/30 px-4 py-8">
       <div className="mx-auto max-w-3xl space-y-4">
         <div className="text-center space-y-2">
           <div className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs text-muted-foreground">

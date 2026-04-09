@@ -308,7 +308,7 @@ export default function RefinePage() {
 
         {/* Info */}
         <div className="mt-4 flex gap-2 rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground">
-          <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+          <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
           <span>
             These details are optional. Your results are already available without them.
             Providing context helps us give better follow-up guidance and clinician reports.

@@ -94,6 +94,7 @@ export default function QuickGatePage() {
       return;
     }
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional one-time hydration from session storage after mount.
     setConsent(savedSession.consent);
     setAgeMonths(savedSession.ageMonths);
     setWalking(savedSession.walking);
@@ -140,8 +141,8 @@ export default function QuickGatePage() {
   return (
     <div className="relative flex min-h-[calc(100dvh-9rem)] items-center justify-center bg-surface-dim px-4 py-8 sm:px-6">
       {/* Decorative Background Elements */}
-      <div className="absolute top-[-10%] right-[-5%] w-[400px] h-[400px] rounded-full bg-primary/10 blur-[100px] pointer-events-none" />
-      <div className="absolute bottom-[-10%] left-[-5%] w-[300px] h-[300px] rounded-full bg-accent/10 blur-[100px] pointer-events-none" />
+      <div className="absolute top-[-10%] right-[-5%] w-100 h-100 rounded-full bg-primary/10 blur-[100px] pointer-events-none" />
+      <div className="absolute bottom-[-10%] left-[-5%] w-75 h-75 rounded-full bg-accent/10 blur-[100px] pointer-events-none" />
 
       <div className="relative z-10 mx-auto w-full max-w-md med-slide-up">
         {/* Header */}
@@ -155,7 +156,7 @@ export default function QuickGatePage() {
           <h1 className="medical-title text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
             Before You Record
           </h1>
-          <p className="mt-2 text-sm text-muted-foreground max-w-[280px] mx-auto">
+          <p className="mt-2 text-sm text-muted-foreground max-w-70 mx-auto">
             Share a few details so we can tailor the movement analysis properly.
           </p>
         </div>

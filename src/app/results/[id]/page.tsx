@@ -295,7 +295,7 @@ export default function ResultsPage() {
 
           <div className="rounded-[1.2rem] bg-error-container p-4">
             <div className="flex gap-3">
-              <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <AlertTriangle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
               <div>
                 <p className="text-sm font-semibold text-red-800">
                   We ran a real analysis, but this clip could not be assessed safely
@@ -406,7 +406,7 @@ export default function ResultsPage() {
           </CardContent>
         </Card>
 
-        <div className="flex rounded-[1rem] bg-surface-container-low p-1">
+        <div className="flex rounded-2xl bg-surface-container-low p-1">
           {TABS.map((tab) => {
             const Icon = tab.icon;
             return (
@@ -504,7 +504,7 @@ export default function ResultsPage() {
               <CardContent className="space-y-2 text-xs text-muted-foreground">
                 {practicalRetakeTips.map((tip) => (
                   <p key={tip} className="flex items-start gap-2">
-                    <span className="mt-[1px]">-</span>
+                    <span className="mt-px">-</span>
                     <span>{tip}</span>
                   </p>
                 ))}

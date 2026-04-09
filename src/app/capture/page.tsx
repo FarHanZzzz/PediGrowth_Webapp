@@ -524,7 +524,7 @@ export default function CapturePage() {
   }
 
   return (
-    <div className="min-h-[calc(100dvh-9rem)] bg-gradient-to-b from-background to-muted/30 px-4 py-6 sm:px-6">
+    <div className="min-h-[calc(100dvh-9rem)] bg-linear-to-b from-background to-muted/30 px-4 py-6 sm:px-6">
       <div className="mx-auto max-w-xl med-slide-up">
         {/* Header */}
         <div className="mb-4 rounded-2xl border border-border/60 bg-card/70 p-4 text-center">
@@ -572,9 +572,9 @@ export default function CapturePage() {
               <CardContent className="p-4">
                 <div className="flex gap-3">
                   {approvedHeroClip ? (
-                    <Sparkles className="h-5 w-5 flex-shrink-0 text-green-700 mt-0.5" />
+                    <Sparkles className="h-5 w-5 shrink-0 text-green-700 mt-0.5" />
                   ) : (
-                    <ShieldAlert className="h-5 w-5 flex-shrink-0 text-amber-700 mt-0.5" />
+                    <ShieldAlert className="h-5 w-5 shrink-0 text-amber-700 mt-0.5" />
                   )}
                   <div className="space-y-2">
                     <div>
@@ -623,7 +623,7 @@ export default function CapturePage() {
             {/* Side view callout */}
             <Card className="border-primary/30 bg-primary/5">
               <CardContent className="flex gap-3 p-4">
-                <Smartphone className="h-5 w-5 flex-shrink-0 text-primary mt-0.5" />
+                <Smartphone className="h-5 w-5 shrink-0 text-primary mt-0.5" />
                 <div className="text-xs leading-relaxed">
                   <p className="font-semibold text-foreground mb-1">
                     Front-view works best for this analysis
@@ -642,7 +642,7 @@ export default function CapturePage() {
                 <p className="text-sm font-semibold text-foreground">Quick recording checklist</p>
                 {QUICK_CHECKLIST.map((item) => (
                   <div key={item} className="flex items-start gap-2.5 rounded-lg bg-muted/20 p-2.5 text-xs">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-concern-none" />
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-concern-none" />
                     <span className="text-foreground/85">{item}</span>
                   </div>
                 ))}
@@ -657,9 +657,9 @@ export default function CapturePage() {
                 {TIPS.map((tip) => (
                   <div key={tip.text} className="flex gap-2.5 rounded-lg bg-muted/20 p-2.5 text-xs">
                     {tip.do ? (
-                      <CheckCircle2 className="h-4 w-4 flex-shrink-0 text-concern-none" />
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-concern-none" />
                     ) : (
-                      <XCircle className="h-4 w-4 flex-shrink-0 text-concern-significant/70" />
+                      <XCircle className="h-4 w-4 shrink-0 text-concern-significant/70" />
                     )}
                     <span className="text-foreground/85">{tip.text}</span>
                   </div>

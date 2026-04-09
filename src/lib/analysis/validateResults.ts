@@ -31,7 +31,6 @@ export interface MetricValidation {
 // ── Physiological Bounds ──────────────────────────────────────────
 
 const CADENCE_BOUNDS = normativeRefs.cadence.physiologicalBounds;
-const MIN_USABLE_DURATION_SEC = normativeRefs.minimumEvidenceRequirements.minUsableDurationSeconds;
 const MIN_STRIKES_FOR_CADENCE = normativeRefs.minimumEvidenceRequirements.minStrikesForCadence;
 const MIN_INTERVALS_FOR_REGULARITY = normativeRefs.minimumEvidenceRequirements.minIntervalsForRegularity;
 

@@ -311,7 +311,7 @@ export default function ClinicianResultPage() {
   };
 
   return (
-    <div className="clinician-packet min-h-dvh bg-gradient-to-b from-background to-muted/30">
+    <div className="clinician-packet min-h-dvh bg-linear-to-b from-background to-muted/30">
       {isBestEffort && (
         <div className="print-hidden border-b border-amber-200 bg-amber-50 px-4 py-2">
           <p className="text-xs text-amber-700">
@@ -393,7 +393,7 @@ export default function ClinicianResultPage() {
             >
               <p className="text-[11px] font-semibold uppercase tracking-wide">Urgency signal</p>
               <div className="mt-1 flex items-start gap-2 text-sm">
-                <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                 <div>
                   <p className="font-semibold">{followUpRecommendation}</p>
                   <p className="text-xs">{FOLLOWUP_CALLOUT_TEXT[followUpPriority]}</p>
@@ -521,7 +521,7 @@ export default function ClinicianResultPage() {
             <div className="rounded-lg border bg-muted/20 p-3">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Assessability matrix</p>
               <div className="mt-2 overflow-x-auto rounded-md border bg-background">
-                <table className="w-full min-w-[520px] border-collapse text-left text-xs">
+                <table className="w-full min-w-130 border-collapse text-left text-xs">
                   <thead>
                     <tr className="border-b bg-muted/30">
                       <th className="px-3 py-2 font-semibold text-foreground">Domain</th>
