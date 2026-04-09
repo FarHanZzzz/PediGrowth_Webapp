@@ -1,127 +1,97 @@
-# Pedi-Growth — Audit & Logging Framework
+# Pedi-Growth - Audit and Logging (Implemented Scope)
 
-**Version:** 0.1.0-draft | **Date:** 2026-04-06
-
----
-
-## 1. Audit Domains
-
-### Domain 1: Product Decision Audit
-| Event | Severity | Trigger |
-|-------|----------|---------|
-| Feature scope changed | info | PRD update merged |
-| Out-of-scope work attempted | warning | Scope violation detected |
-| Acceptance criteria modified | info | Issue updated |
-
-### Domain 2: Model / Provider Audit
-| Event | Severity | Trigger |
-|-------|----------|---------|
-| Pose provider changed | warning | Provider config updated |
-| Provider version updated | info | Dependency update |
-| Extraction confidence drops below baseline | warning | Average confidence < 0.4 |
-| Provider initialization failure | critical | Runtime error |
-
-### Domain 3: Policy Audit
-| Event | Severity | Trigger |
-|-------|----------|---------|
-| Policy threshold changed | warning | Code change merged |
-| Policy version updated | info | Release |
-| Policy test failure | critical | CI pipeline |
-| Policy bypass attempted | critical | Runtime detection |
-
-### Domain 4: Safety Incident Audit
-| Event | Severity | Trigger |
-|-------|----------|---------|
-| Prohibited language in output | critical | Policy filter triggered |
-| Diagnostic claim generated | critical | Language safety filter |
-| AI response blocked | warning | Guardrail intervention |
-| Confidence-inappropriate escalation | warning | Concern engine anomaly |
-| User reports harmful output | critical | User feedback |
-
-### Domain 5: Data Access Audit
-| Event | Severity | Trigger |
-|-------|----------|---------|
-| User data accessed | info | Any read operation |
-| Data export requested | info | PDF/share generation |
-| Data deletion requested | warning | User action |
-| Admin access to user data | warning | Admin panel action |
-| Unauthorized access attempt | critical | RLS rejection |
-
-### Domain 6: Sharing Audit
-| Event | Severity | Trigger |
-|-------|----------|---------|
-| Share link created | info | User action |
-| Share link accessed | info | External access |
-| Share link expired | info | TTL reached |
-| Share link revoked | info | User action |
-| Excessive share access | warning | Access count > threshold |
-
-### Domain 7: AI Response Audit
-| Event | Severity | Trigger |
-|-------|----------|---------|
-| Navigator message sent | info | User message |
-| Navigator response generated | info | LLM response |
-| Response filtered by policy | warning | Policy intervention |
-| Knowledge card cited | info | Tool use |
-| Diagnostic question asked | info | Pattern detection |
-| Prohibited claim blocked | critical | Guardrail triggered |
-
-### Domain 8: Release Audit
-| Event | Severity | Trigger |
-|-------|----------|---------|
-| Version released | info | Deployment |
-| Policy version bumped | warning | Policy change |
-| Rollback executed | critical | Emergency |
-| Demo freeze activated | info | Pre-demo |
-
-### Domain 9: Demo Readiness Audit
-| Event | Severity | Trigger |
-|-------|----------|---------|
-| Demo checklist completed | info | QA confirmation |
-| Demo scenario failure | warning | Test failure |
-| Seed data loaded | info | Script execution |
-| Demo freeze violation | warning | Merge during freeze |
+Version: 0.1.1
+Date: 2026-04-09
 
 ---
 
-## 2. Audit Event Schema
+## 1. Reality Check
 
-```typescript
-interface AuditEvent {
-  id: string;
-  userId: string | null;
-  eventType: string;            // e.g., 'policy.language_safety.violation'
-  severity: 'info' | 'warning' | 'critical';
-  domain: AuditDomain;
-  entityType: string | null;    // e.g., 'assessment', 'navigator_message'
-  entityId: string | null;
-  details: Record<string, unknown>;
-  policyVersion: string | null;
-  appVersion: string;
-  timestamp: string;            // ISO 8601
-}
-```
+This file documents only behavior that is implemented in code today.
+
+The previous draft listed broad enterprise audit domains (product, AI, RLS incidents, alerting, retention SLAs). Those are not wired to runtime logging yet and were removed from this active spec.
 
 ---
 
-## 3. Retention & Access
+## 2. Implemented Audit Surface
 
-| Severity | Retention | Who Can Review |
-|----------|-----------|----------------|
-| info | 90 days | Admin, relevant role owner |
-| warning | 1 year | Admin, Policy Lead, Product Owner |
-| critical | 2 years | Admin, Product Owner (mandatory review) |
+### A. Share-link access accounting (implemented)
 
-**Export format:** JSON lines, downloadable by admin role.
+Source:
+- src/app/api/share/create/route.ts
+- src/app/api/share/[token]/route.ts
+- supabase/migrations/002_shared_packets.sql
+
+What is recorded:
+- token hash for link lookup
+- expires_at
+- max_accesses
+- access_count
+- last_accessed_at
+- is_active
+
+Behavior:
+- Access count increments on successful token GET.
+- Expired/inactive/maxed links are rejected with clear HTTP responses.
+
+### B. Test and CI evidence (implemented)
+
+Source:
+- npm run test (node:test suite)
+- lint/type-check scripts in package.json
+
+What this provides:
+- policy and scoring regression coverage
+- deterministic evidence that core logic paths still pass
+
+Note:
+- This is verification evidence, not a user-level immutable audit event stream.
 
 ---
 
-## 4. Alert Triggers
+## 3. Data Shape in Use
 
-| Condition | Alert Action |
-|-----------|-------------|
-| Any critical severity event | Notify Product Owner + Policy Lead immediately |
-| > 5 policy violations in 1 hour | Notify all leads |
-| AI response blocked 3 times in one session | Flag session for review |
-| Share link accessed > 50 times | Flag for abuse review |
-| Data deletion requested | Confirm with user, notify admin |
+There is no active app-level audit_events write pipeline in src/app/api today.
+
+Current persistent operational logging is limited to share packet accounting in shared_packets:
+
+- id
+- assessment_ref
+- created_by
+- token_hash
+- payload
+- expires_at
+- access_count
+- max_accesses
+- is_active
+- created_at
+- last_accessed_at
+
+---
+
+## 4. Not Implemented (Explicitly Out of Active Scope)
+
+The following were removed from this active framework because runtime handlers are not present:
+
+- centralized audit_events ingestion route
+- policy_violations write flow
+- automated severity-triggered alerting
+- admin review queue and retention enforcement jobs
+- AI message logging pipeline
+
+These can be reintroduced when corresponding API routes/jobs are implemented.
+
+---
+
+## 5. Practical Next Step (If Needed)
+
+If hackathon judges ask for auditability, the smallest truthful extension is:
+
+1. Add POST /api/audit/log (server-only)
+2. Write minimal events for:
+   - share_link_created
+   - share_link_accessed
+   - policy_language_violation
+3. Store into audit_events table from 001_initial_schema.sql
+
+Until then, do not claim full audit framework coverage.

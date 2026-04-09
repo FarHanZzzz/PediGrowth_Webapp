@@ -32,7 +32,8 @@ const SKELETON_EDGES: Array<[string, string]> = [
   ["rightAnkle", "rightFoot"],
 ];
 
-const MIN_VISIBILITY = 0.2;
+const MIN_VISIBILITY = 0.12;
+const MIN_USABLE_VISIBILITY = 0.12;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -40,6 +41,29 @@ function clamp(value: number, min: number, max: number): number {
 
 function findLandmark(frame: FrameTrace, name: string): TraceLandmark | undefined {
   return frame.landmarks.find((lm) => lm.name === name);
+}
+
+function hasUsableLandmarkSignal(frame: FrameTrace): boolean {
+  if (frame.bodyVisibility >= MIN_USABLE_VISIBILITY) {
+    return true;
+  }
+
+  return frame.landmarks.some((lm) => lm.visibility >= MIN_USABLE_VISIBILITY);
+}
+
+function findNearestFrameIndex(targetIndex: number, candidates: number[]): number {
+  let best = candidates[0];
+  let bestDistance = Math.abs(candidates[0] - targetIndex);
+
+  for (let i = 1; i < candidates.length; i += 1) {
+    const distance = Math.abs(candidates[i] - targetIndex);
+    if (distance < bestDistance) {
+      best = candidates[i];
+      bestDistance = distance;
+    }
+  }
+
+  return best;
 }
 
 function toLocal3D(frame: FrameTrace): Map<string, Point3> {
@@ -104,11 +128,52 @@ export default function Tier1Gait3DPanel({
   const [snapshotMessage, setSnapshotMessage] = useState<string | null>(null);
 
   const totalFrames = trace.frames.length;
-  const activeFrameIndex =
+  const desiredFrameIndex =
     selectedFrameIndex === null || selectedFrameIndex === undefined
       ? frameIndex
       : clamp(Math.round(selectedFrameIndex), 0, Math.max(totalFrames - 1, 0));
-  const currentFrame = totalFrames > 0 ? trace.frames[activeFrameIndex] : null;
+
+  const usableFrameIndices = useMemo(
+    () =>
+      trace.frames
+        .map((frame, index) => (hasUsableLandmarkSignal(frame) ? index : -1))
+        .filter((index) => index >= 0),
+    [trace.frames],
+  );
+
+  useEffect(() => {
+    if (selectedFrameIndex !== null && selectedFrameIndex !== undefined) {
+      return;
+    }
+
+    if (totalFrames === 0 || usableFrameIndices.length === 0) {
+      return;
+    }
+
+    if (!hasUsableLandmarkSignal(trace.frames[frameIndex])) {
+      // Start local controls on a frame with visible signal to avoid blank first render.
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time corrective initialization to first usable frame.
+      setFrameIndex(usableFrameIndices[0]);
+    }
+  }, [frameIndex, selectedFrameIndex, totalFrames, trace.frames, usableFrameIndices]);
+
+  const renderFrameIndex = useMemo(() => {
+    if (totalFrames === 0 || usableFrameIndices.length === 0) {
+      return null;
+    }
+
+    if (usableFrameIndices.includes(desiredFrameIndex)) {
+      return desiredFrameIndex;
+    }
+
+    return findNearestFrameIndex(desiredFrameIndex, usableFrameIndices);
+  }, [desiredFrameIndex, totalFrames, usableFrameIndices]);
+
+  const currentFrame = renderFrameIndex === null ? null : trace.frames[renderFrameIndex];
+  const requestedFrame = totalFrames > 0 ? trace.frames[desiredFrameIndex] : null;
+  const isFallbackFrame =
+    renderFrameIndex !== null &&
+    renderFrameIndex !== desiredFrameIndex;
 
   const fps = useMemo(() => {
     const rawFps = trace.videoMeta.fps;
@@ -263,11 +328,13 @@ export default function Tier1Gait3DPanel({
     ctx.font = "12px ui-sans-serif, system-ui, -apple-system";
     ctx.fillText("Tier 1 3D view from run landmarks", 14, 20);
     ctx.fillStyle = "rgba(148, 163, 184, 0.9)";
-    ctx.fillText(`Frame ${activeFrameIndex + 1}/${totalFrames}  |  yaw ${Math.round(yawDeg)} deg`, 14, 38);
-  }, [activeFrameIndex, currentFrame, totalFrames, yawDeg]);
+    const displayedFrameIndex = renderFrameIndex ?? desiredFrameIndex;
+    ctx.fillText(`Frame ${displayedFrameIndex + 1}/${totalFrames}  |  yaw ${Math.round(yawDeg)} deg`, 14, 38);
+  }, [currentFrame, desiredFrameIndex, renderFrameIndex, totalFrames, yawDeg]);
 
   const frameTimeSec = currentFrame ? (currentFrame.timestampMs / 1000).toFixed(2) : "0.00";
   const frameUsability = currentFrame ? Math.round(currentFrame.bodyVisibility * 100) : 0;
+  const requestedFrameUsability = requestedFrame ? Math.round(requestedFrame.bodyVisibility * 100) : 0;
 
   function handleExportSnapshot() {
     const canvas = canvasRef.current;
@@ -280,7 +347,8 @@ export default function Tier1Gait3DPanel({
       const dataUrl = canvas.toDataURL("image/png");
       const link = document.createElement("a");
       link.href = dataUrl;
-      link.download = `tier1-3d-${trace.sessionId}-frame-${activeFrameIndex + 1}.png`;
+      const exportFrameIndex = renderFrameIndex ?? desiredFrameIndex;
+      link.download = `tier1-3d-${trace.sessionId}-frame-${exportFrameIndex + 1}.png`;
       link.click();
       setSnapshotMessage("Snapshot exported as PNG.");
     } catch {
@@ -309,9 +377,20 @@ export default function Tier1Gait3DPanel({
         </span>
       </div>
 
-      {!currentFrame ? (
+      {totalFrames === 0 ? (
         <div className="rounded-md border border-amber-300 bg-amber-50/70 p-3 text-xs text-amber-900">
           No trace frame is available for 3D rendering.
+        </div>
+      ) : usableFrameIndices.length === 0 ? (
+        <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50/70 p-3 text-xs text-amber-900">
+          <p>No usable landmark signal was detected in this clip for Tier 1 3D rendering.</p>
+          <p>
+            Current synced frame usability is {requestedFrameUsability}%. Try a clearer clip or re-run analysis with better visibility.
+          </p>
+        </div>
+      ) : !currentFrame ? (
+        <div className="rounded-md border border-amber-300 bg-amber-50/70 p-3 text-xs text-amber-900">
+          Tier 1 3D could not resolve a renderable frame.
         </div>
       ) : (
         <>
@@ -379,6 +458,13 @@ export default function Tier1Gait3DPanel({
               </p>
             )}
 
+            {isFallbackFrame && (
+              <p className="text-[11px] text-muted-foreground">
+                Synced frame {desiredFrameIndex + 1} had low landmark signal ({requestedFrameUsability}% usability).
+                Showing nearest usable frame {(renderFrameIndex ?? desiredFrameIndex) + 1} instead.
+              </p>
+            )}
+
             {snapshotMessage && (
               <p className="text-[11px] text-primary">{snapshotMessage}</p>
             )}
@@ -392,7 +478,7 @@ export default function Tier1Gait3DPanel({
                 type="range"
                 min={0}
                 max={Math.max(totalFrames - 1, 0)}
-                value={activeFrameIndex}
+                value={desiredFrameIndex}
                 onChange={(event) => {
                   const next = Number(event.target.value);
                   setFrameIndex(next);

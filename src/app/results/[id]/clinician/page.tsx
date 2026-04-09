@@ -210,6 +210,16 @@ export default function ClinicianResultPage() {
   const packetTimestamp = result.analyzedAt ?? result.run.analyzedAt;
   const canShowTier1ThreeD =
     result.run.classification === "real_analysis" && hasTrace && hasVideo && Boolean(videoUrl);
+  const tier1UnavailableReasons: string[] = [];
+  if (result.run.classification !== "real_analysis") {
+    tier1UnavailableReasons.push("Run is not marked as a real analysis.");
+  }
+  if (!hasTrace) {
+    tier1UnavailableReasons.push("Analysis trace data is missing.");
+  }
+  if (!hasVideo || !videoUrl) {
+    tier1UnavailableReasons.push("Retained source video is unavailable in local storage.");
+  }
   const clipUsabilityLabel =
     result.quality.result === "pass"
       ? "Usable for interpretation"
@@ -797,7 +807,14 @@ export default function ClinicianResultPage() {
                   </div>
                 ) : (
                   <div className="rounded-lg border border-dashed border-muted-foreground/30 bg-muted/20 p-3 text-xs text-muted-foreground">
-                    Tier 1 3D movement view is available for real-analysis runs with retained source video and trace data.
+                    <p>Tier 1 3D movement view is unavailable for this run.</p>
+                    {tier1UnavailableReasons.length > 0 && (
+                      <ul className="mt-1.5 list-disc space-y-1 pl-4">
+                        {tier1UnavailableReasons.map((reason) => (
+                          <li key={reason}>{reason}</li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                 )}
 
