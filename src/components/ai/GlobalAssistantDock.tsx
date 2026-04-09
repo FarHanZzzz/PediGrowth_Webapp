@@ -96,7 +96,7 @@ function shouldRenderDock(pathname: string): boolean {
 
 export default function GlobalAssistantDock() {
   const pathname = usePathname();
-  const [isOpen, setIsOpen] = useState(false);
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
 
   const enabled = useMemo(() => shouldRenderDock(pathname), [pathname]);
 
@@ -176,35 +176,53 @@ export default function GlobalAssistantDock() {
   if (!enabled) return null;
 
   return (
-    <div className="fixed bottom-3 right-3 z-50 flex flex-col items-end gap-2 print:hidden sm:bottom-4 sm:right-4">
-      {isOpen && (
-        <div
-          id="global-ai-assistant-panel"
-          className="h-[clamp(22rem,68dvh,42rem)] max-h-[calc(100dvh-4.5rem)] w-[min(34rem,calc(100vw-1rem))] overflow-hidden rounded-2xl shadow-2xl"
-        >
+    <>
+      <div className="fixed bottom-4 right-4 top-[5.4rem] z-40 hidden w-90 print:hidden lg:block">
+        <div className="h-full overflow-hidden rounded-2xl border bg-background shadow-2xl">
           <AssistantPanel
             resultId={assistantData.resultId}
             metrics={assistantData.metrics}
             risk_category={assistantData.riskCategory}
             context={assistantData.context}
-            isOpen={isOpen}
-            onToggle={() => setIsOpen(false)}
+            isOpen
+            showToggleControl={false}
+            autoExecuteActions
           />
         </div>
-      )}
+      </div>
 
-      <Button
-        id="global-assistant-toggle-button"
-        variant="outline"
-        size="sm"
-        onClick={() => setIsOpen((prev) => !prev)}
-        className="shadow-lg"
-        aria-expanded={isOpen}
-        aria-controls="global-ai-assistant-panel"
-      >
-        <MessageCircle className="mr-2 h-5 w-5" />
-        {isOpen ? "Close Assistant" : "Ask AI"}
-      </Button>
-    </div>
+      <div className="fixed bottom-3 right-3 z-50 flex flex-col items-end gap-2 print:hidden sm:bottom-4 sm:right-4 lg:hidden">
+        {isMobileOpen && (
+          <div
+            id="global-ai-assistant-panel"
+            className="h-[clamp(22rem,68dvh,42rem)] max-h-[calc(100dvh-4.5rem)] w-[min(34rem,calc(100vw-1rem))] overflow-hidden rounded-2xl shadow-2xl"
+          >
+            <AssistantPanel
+              resultId={assistantData.resultId}
+              metrics={assistantData.metrics}
+              risk_category={assistantData.riskCategory}
+              context={assistantData.context}
+              isOpen={isMobileOpen}
+              showToggleControl
+              autoExecuteActions
+              onToggle={() => setIsMobileOpen(false)}
+            />
+          </div>
+        )}
+
+        <Button
+          id="global-assistant-toggle-button"
+          variant="outline"
+          size="sm"
+          onClick={() => setIsMobileOpen((prev) => !prev)}
+          className="shadow-lg"
+          aria-expanded={isMobileOpen}
+          aria-controls="global-ai-assistant-panel"
+        >
+          <MessageCircle className="mr-2 h-5 w-5" />
+          {isMobileOpen ? "Close Assistant" : "Ask AI"}
+        </Button>
+      </div>
+    </>
   );
 }

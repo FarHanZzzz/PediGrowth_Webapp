@@ -1,11 +1,14 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { MessageCircle, X, Loader2, AlertCircle, Sparkles, ListChecks } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { collectResultIds, readResultRaw } from '@/lib/session/sessionStorage';
+import { fetchResultFromCloud } from '@/lib/db/cloudStorage';
 
 interface Message {
   id: string;
@@ -49,13 +52,35 @@ interface AssistantApiResponse {
   thread_id?: string;
   suggested_prompts?: string[];
   action_items?: string[];
+  actions?: AssistantAction[];
   source?: string;
+}
+
+type AssistantActionType =
+  | 'navigate'
+  | 'open_result'
+  | 'retake_clip'
+  | 'create_share_link'
+  | 'focus_issue';
+
+interface AssistantAction {
+  id: string;
+  type: AssistantActionType;
+  label: string;
+  auto_execute: boolean;
+  route?: string;
+  result_id?: string;
+  selector?: 'latest';
+  frame_index?: number;
+  timestamp_ms?: number;
+  reason?: string;
 }
 
 interface CachedAssistantResponse {
   response: string;
   suggestedPrompts: string[];
   actionItems: string[];
+  actions: AssistantAction[];
   source: string | null;
 }
 
@@ -70,6 +95,8 @@ interface AssistantPanelProps {
   context?: AssistantContext;
   issueHotspots?: AssistantIssueHotspot[];
   isOpen?: boolean;
+  showToggleControl?: boolean;
+  autoExecuteActions?: boolean;
   onFocusIssue?: (frameIndex: number) => void;
   onToggle?: () => void;
 }
@@ -111,6 +138,62 @@ function makeMessage(role: Message['role'], content: string): Message {
   };
 }
 
+function rankResultId(id: string): number {
+  if (!id.startsWith('r_')) return 0;
+  const parsed = Number.parseInt(id.slice(2), 36);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function resolveLatestResultId(): string | null {
+  if (typeof window === 'undefined') return null;
+  const ids = collectResultIds(window.sessionStorage);
+  if (ids.length === 0) return null;
+  return [...ids].sort((a, b) => rankResultId(b) - rankResultId(a))[0] ?? null;
+}
+
+function normalizeActions(actions: unknown): AssistantAction[] {
+  if (!Array.isArray(actions)) return [];
+  const validTypes: AssistantActionType[] = [
+    'navigate',
+    'open_result',
+    'retake_clip',
+    'create_share_link',
+    'focus_issue',
+  ];
+
+  return actions
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const raw = item as Record<string, unknown>;
+      const type = typeof raw.type === 'string' ? (raw.type as AssistantActionType) : null;
+      if (!type || !validTypes.includes(type)) return null;
+
+      return {
+        id: typeof raw.id === 'string' && raw.id ? raw.id : crypto.randomUUID(),
+        type,
+        label: typeof raw.label === 'string' && raw.label ? raw.label : 'Run action',
+        auto_execute: Boolean(raw.auto_execute),
+        route: typeof raw.route === 'string' ? raw.route : undefined,
+        result_id: typeof raw.result_id === 'string' ? raw.result_id : undefined,
+        selector: raw.selector === 'latest' ? 'latest' : undefined,
+        frame_index: typeof raw.frame_index === 'number' ? raw.frame_index : undefined,
+        timestamp_ms: typeof raw.timestamp_ms === 'number' ? raw.timestamp_ms : undefined,
+        reason: typeof raw.reason === 'string' ? raw.reason : undefined,
+      } as AssistantAction;
+    })
+    .filter((item): item is AssistantAction => item !== null)
+    .slice(0, 4);
+}
+
+function sourceDisplayLabel(source: string | null): string | null {
+  if (!source) return null;
+  if (source === 'llm') return 'live AI';
+  if (source === 'heuristic' || source === 'mock') return 'fallback (non-AI)';
+  if (source === 'policy_refusal') return 'safety refusal';
+  if (source === 'cache') return 'cached';
+  return source;
+}
+
 function streamText(
   text: string,
   pushChunk: (chunk: string) => void,
@@ -144,9 +227,12 @@ export default function AssistantPanel({
   context,
   issueHotspots = [],
   isOpen = false,
+  showToggleControl = true,
+  autoExecuteActions = true,
   onFocusIssue,
   onToggle,
 }: AssistantPanelProps) {
+  const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -155,6 +241,8 @@ export default function AssistantPanel({
   const [threadId, setThreadId] = useState<string | null>(null);
   const [suggestedPrompts, setSuggestedPrompts] = useState<string[]>(DEFAULT_PROMPTS);
   const [actionItems, setActionItems] = useState<string[]>([]);
+  const [assistantActions, setAssistantActions] = useState<AssistantAction[]>([]);
+  const [actionStatus, setActionStatus] = useState<string | null>(null);
   const [lastSource, setLastSource] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -190,6 +278,152 @@ export default function AssistantPanel({
     };
   }, []);
 
+  const createShareLink = async (targetResultId?: string): Promise<string> => {
+    const resolvedResultId = targetResultId ?? resultId;
+    if (!resolvedResultId) {
+      throw new Error('No active result found for share link generation.');
+    }
+
+    let payloadSource: Record<string, unknown> | null = null;
+    const raw = readResultRaw(resolvedResultId);
+    if (raw) {
+      try {
+        payloadSource = JSON.parse(raw) as Record<string, unknown>;
+      } catch {
+        payloadSource = null;
+      }
+    }
+
+    if (!payloadSource) {
+      payloadSource = await fetchResultFromCloud(resolvedResultId);
+    }
+
+    if (!payloadSource || typeof payloadSource !== 'object') {
+      throw new Error('Could not load result payload for sharing.');
+    }
+
+    const reports =
+      payloadSource.reports && typeof payloadSource.reports === 'object'
+        ? (payloadSource.reports as Record<string, unknown>)
+        : null;
+    const caregiver =
+      reports?.caregiver && typeof reports.caregiver === 'object'
+        ? (reports.caregiver as Record<string, unknown>)
+        : null;
+    const clinician =
+      reports?.clinician && typeof reports.clinician === 'object'
+        ? (reports.clinician as Record<string, unknown>)
+        : null;
+    const handoffText = typeof reports?.handoffText === 'string' ? reports.handoffText : '';
+
+    if (!caregiver || !clinician || !handoffText) {
+      throw new Error('Share packet is incomplete for this result.');
+    }
+
+    const response = await fetch('/api/share/create', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        assessmentId: resolvedResultId,
+        payload: {
+          caregiver,
+          clinician,
+          handoffText,
+        },
+        policy: {
+          expiresHours: 72,
+          maxAccesses: 25,
+        },
+      }),
+    });
+
+    const data = (await response.json()) as { shareUrl?: string; error?: string };
+    if (!response.ok || !data.shareUrl) {
+      throw new Error(data.error || 'Failed to create share link.');
+    }
+
+    return data.shareUrl;
+  };
+
+  const executeAssistantAction = async (
+    action: AssistantAction,
+    origin: 'auto' | 'manual'
+  ): Promise<void> => {
+    switch (action.type) {
+      case 'navigate': {
+        if (!action.route) {
+          throw new Error('Action missing route.');
+        }
+        setActionStatus(`${origin === 'auto' ? 'Auto' : 'Manual'} action: opening ${action.route}`);
+        router.push(action.route);
+        return;
+      }
+      case 'open_result': {
+        const resolved = action.result_id ?? (action.selector === 'latest' ? resolveLatestResultId() : null);
+        if (!resolved) {
+          throw new Error('No matching result found to open.');
+        }
+        setActionStatus(`${origin === 'auto' ? 'Auto' : 'Manual'} action: opening result ${resolved}`);
+        router.push(`/results/${resolved}`);
+        return;
+      }
+      case 'retake_clip': {
+        setActionStatus(`${origin === 'auto' ? 'Auto' : 'Manual'} action: opening capture flow`);
+        router.push('/capture?source=assistant');
+        return;
+      }
+      case 'focus_issue': {
+        if (typeof action.frame_index !== 'number') {
+          throw new Error('Action missing frame index.');
+        }
+        onFocusIssue?.(action.frame_index);
+        setActionStatus(
+          `${origin === 'auto' ? 'Auto' : 'Manual'} action: focused issue at frame ${action.frame_index}`
+        );
+        return;
+      }
+      case 'create_share_link': {
+        const shareUrl = await createShareLink(action.result_id);
+        if (typeof window !== 'undefined' && navigator.clipboard?.writeText) {
+          void navigator.clipboard.writeText(shareUrl).catch(() => {});
+        }
+        setActionStatus(
+          `${origin === 'auto' ? 'Auto' : 'Manual'} action: share link ready and copied to clipboard.`
+        );
+        setMessages((prev) => [
+          ...prev,
+          makeMessage('assistant', `Share link created: ${shareUrl}`),
+        ]);
+        return;
+      }
+      default:
+        return;
+    }
+  };
+
+  const maybeAutoExecuteActions = async (actions: AssistantAction[]): Promise<void> => {
+    if (!autoExecuteActions || actions.length === 0) return;
+
+    for (const action of actions) {
+      if (!action.auto_execute) continue;
+      try {
+        await executeAssistantAction(action, 'auto');
+        if (
+          action.type === 'navigate' ||
+          action.type === 'open_result' ||
+          action.type === 'retake_clip'
+        ) {
+          break;
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Action execution failed.';
+        setActionStatus(`Auto action failed: ${message}`);
+      }
+    }
+  };
+
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!input.trim() || isLoading) return;
@@ -201,6 +435,7 @@ export default function AssistantPanel({
     setIsLoading(true);
     setError(null);
     setLastSource(null);
+    setActionStatus(null);
 
     const shortHistoryKey = messages
       .slice(-3)
@@ -228,6 +463,7 @@ export default function AssistantPanel({
 
       setSuggestedPrompts(cached?.suggestedPrompts ?? DEFAULT_PROMPTS);
       setActionItems(cached?.actionItems ?? []);
+      setAssistantActions(cached?.actions ?? []);
       setLastSource(cached?.source ?? 'cache');
 
       const assistantMessageId = crypto.randomUUID();
@@ -242,6 +478,8 @@ export default function AssistantPanel({
           return next;
         });
       });
+
+      await maybeAutoExecuteActions(cached?.actions ?? []);
       setIsLoading(false);
       return;
     }
@@ -302,10 +540,12 @@ export default function AssistantPanel({
           ? data.suggested_prompts.slice(0, 5)
           : DEFAULT_PROMPTS;
       const nextActionItems = Array.isArray(data.action_items) ? data.action_items.slice(0, 6) : [];
+      const nextActions = normalizeActions(data.actions);
       const nextSource = typeof data.source === 'string' ? data.source : null;
 
       setSuggestedPrompts(nextSuggestedPrompts);
       setActionItems(nextActionItems);
+      setAssistantActions(nextActions);
       setLastSource(nextSource);
 
       const assistantMessageId = crypto.randomUUID();
@@ -315,6 +555,7 @@ export default function AssistantPanel({
         response: data.response ?? '',
         suggestedPrompts: nextSuggestedPrompts,
         actionItems: nextActionItems,
+        actions: nextActions,
         source: nextSource,
       });
 
@@ -328,6 +569,8 @@ export default function AssistantPanel({
           return next;
         });
       });
+
+      await maybeAutoExecuteActions(nextActions);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
         return;
@@ -354,7 +597,7 @@ export default function AssistantPanel({
     <Card
       role="region"
       aria-label="AI Assistant Panel"
-      className={`h-full min-h-0 flex flex-col !gap-0 overflow-hidden transition-all duration-300 motion-reduce:transition-none ${isOpen ? 'w-full' : 'w-12'}`}
+      className={`h-full min-h-0 flex flex-col gap-0! overflow-hidden transition-all duration-300 motion-reduce:transition-none ${isOpen ? 'w-full' : 'w-12'}`}
     >
       <CardHeader className="border-b bg-linear-to-r from-blue-50 to-indigo-50 p-3">
         <div className="flex items-center justify-between">
@@ -367,15 +610,17 @@ export default function AssistantPanel({
                   {mode === 'caregiver' ? 'Simple' : 'Technical'}
                 </Badge>
               </div>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={onToggle}
-                className="hover:bg-blue-100"
-                aria-label="Close assistant"
-              >
-                <X className="h-4 w-4" />
-              </Button>
+              {showToggleControl && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={onToggle}
+                  className="hover:bg-blue-100"
+                  aria-label="Close assistant"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
             </>
           ) : (
             <Button
@@ -446,13 +691,13 @@ export default function AssistantPanel({
                 <div className="space-y-3">
                   {lastSource && (
                     <div className="text-center text-[11px] text-muted-foreground">
-                      Response mode: {lastSource}
+                      Response mode: {sourceDisplayLabel(lastSource)}
                     </div>
                   )}
                   {messages.map((msg, idx) => (
                     <div key={`${msg.id}_${idx}`} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                       <div
-                        className={`max-w-[85%] whitespace-pre-wrap break-words rounded-lg p-3 text-sm ${
+                        className={`max-w-[85%] whitespace-pre-wrap wrap-break-word rounded-lg p-3 text-sm ${
                           msg.role === 'user'
                             ? 'rounded-br-none bg-blue-600 text-white'
                             : 'rounded-bl-none bg-gray-100 text-gray-900'
@@ -484,6 +729,41 @@ export default function AssistantPanel({
                       <li key={item}>• {item}</li>
                     ))}
                   </ul>
+                </div>
+              )}
+
+              {assistantActions.length > 0 && (
+                <div className="mt-4 rounded-lg border bg-indigo-50/60 p-3">
+                  <div className="mb-2 text-xs font-semibold text-indigo-900">
+                    Agent actions
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {assistantActions.map((action) => (
+                      <Button
+                        key={action.id}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 border-indigo-300 bg-white text-[11px] text-indigo-800 hover:bg-indigo-100"
+                        onClick={() => {
+                          void executeAssistantAction(action, 'manual').catch((err) => {
+                            const message =
+                              err instanceof Error ? err.message : 'Action execution failed.';
+                            setActionStatus(`Manual action failed: ${message}`);
+                          });
+                        }}
+                        disabled={isLoading}
+                      >
+                        {action.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {actionStatus && (
+                <div className="mt-4 rounded-lg border border-indigo-200 bg-indigo-50 p-2 text-[11px] text-indigo-900">
+                  {actionStatus}
                 </div>
               )}
 
@@ -557,7 +837,7 @@ export default function AssistantPanel({
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Ask a question about your results..."
-                className="min-h-[56px] max-h-32 resize-none text-sm"
+                className="min-h-14 max-h-32 resize-none text-sm"
                 disabled={isLoading}
                 aria-label="Message input"
               />
@@ -569,8 +849,10 @@ export default function AssistantPanel({
                   onClick={() => {
                     setMessages([]);
                     setActionItems([]);
+                    setAssistantActions([]);
                     setSuggestedPrompts(DEFAULT_PROMPTS);
                     setLastSource(null);
+                    setActionStatus(null);
                     responseCacheRef.current.clear();
                     if (typeof window !== 'undefined') {
                       window.sessionStorage.removeItem(threadStorageKey);

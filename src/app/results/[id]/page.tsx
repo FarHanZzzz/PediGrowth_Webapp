@@ -317,7 +317,7 @@ export default function ResultsPage() {
   const [activeTab, setActiveTab] = useState<ResultTab>("summary");
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [exportAvailable, setExportAvailable] = useState(false);
-  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  const [isMobileAssistantOpen, setIsMobileAssistantOpen] = useState(false);
   const [jumpToFrameIndex, setJumpToFrameIndex] = useState<number | null>(null);
   const [sessionClinicalAssessment, setSessionClinicalAssessment] =
     useState<SessionClinicalAssessment | null>(null);
@@ -601,11 +601,11 @@ export default function ResultsPage() {
   };
 
   useEffect(() => {
-    if (!isAssistantOpen) {
+    if (!isMobileAssistantOpen) {
       const toggle = document.getElementById("assistant-toggle-button") as HTMLButtonElement | null;
       toggle?.focus();
     }
-  }, [isAssistantOpen]);
+  }, [isMobileAssistantOpen]);
 
   if (!result) {
     return (
@@ -796,7 +796,7 @@ export default function ResultsPage() {
         </div>
 
         <Card className="relative overflow-hidden border-0 bg-white/60 backdrop-blur-2xl shadow-xl shadow-black/5 ring-1 ring-white/80 transition-all hover:shadow-2xl hover:bg-white/80">
-          <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-transparent pointer-events-none" />
+          <div className="absolute inset-0 bg-linear-to-br from-white/40 to-transparent pointer-events-none" />
           <CardContent className="relative grid gap-6 p-6 sm:grid-cols-3">
             <div className="group">
               <p className="text-[11px] font-extrabold uppercase tracking-widest text-[#5c7a76] mb-2">Overall observation</p>
@@ -851,7 +851,7 @@ export default function ResultsPage() {
         </div>
 
         {result.clinicianFeedback && (
-          <div className="relative overflow-hidden rounded-[1.5rem] bg-indigo-50/80 p-6 shadow-md ring-1 ring-indigo-200/50 backdrop-blur-sm border-l-4 border-l-indigo-500">
+          <div className="relative overflow-hidden rounded-3xl bg-indigo-50/80 p-6 shadow-md ring-1 ring-indigo-200/50 backdrop-blur-sm border-l-4 border-l-indigo-500">
             <div className="absolute top-0 right-0 p-4 opacity-[0.03] pointer-events-none transform translate-x-4 -translate-y-4">
               <MessageSquare className="h-40 w-40 text-indigo-900" />
             </div>
@@ -864,7 +864,7 @@ export default function ResultsPage() {
                   New Message From Your Clinical Care Team
                 </p>
                 <p className="text-xl font-medium text-slate-800 leading-relaxed max-w-3xl">
-                  "{result.clinicianFeedback.note}"
+                  &quot;{result.clinicianFeedback.note}&quot;
                 </p>
                 <p className="text-xs font-semibold text-indigo-900/50 mt-3 block">
                   Sent on {new Date(result.clinicianFeedback.updatedAt).toLocaleString()}
@@ -877,7 +877,7 @@ export default function ResultsPage() {
         {activeTab === "summary" && (
           <div className="space-y-4">
             <div
-              className={`relative overflow-hidden rounded-[1.5rem] p-6 shadow-lg shadow-black/5 ring-1 border-0 ${FOLLOWUP_CALLOUT_STYLES[followupPriority]}`}
+              className={`relative overflow-hidden rounded-3xl p-6 shadow-lg shadow-black/5 ring-1 border-0 ${FOLLOWUP_CALLOUT_STYLES[followupPriority]}`}
               role={followupPriority === "specialist" ? "alert" : undefined}
             >
               <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none transform translate-x-4 -translate-y-4">
@@ -1302,8 +1302,24 @@ export default function ResultsPage() {
         </Button>
       </div>
 
-      <div className="fixed bottom-3 right-3 z-50 flex flex-col items-end gap-2 print:hidden sm:bottom-4 sm:right-4">
-        {isAssistantOpen && (
+      <div className="fixed bottom-4 right-4 top-[5.4rem] z-40 hidden w-90 print:hidden lg:block">
+        <div className="h-full overflow-hidden rounded-2xl border bg-background shadow-2xl">
+          <AssistantPanel
+            resultId={result.id}
+            metrics={assistantMetrics}
+            risk_category={assistantRiskCategory}
+            context={assistantContext}
+            issueHotspots={assistantIssueHotspots}
+            isOpen
+            showToggleControl={false}
+            autoExecuteActions
+            onFocusIssue={handleFocusIssue}
+          />
+        </div>
+      </div>
+
+      <div className="fixed bottom-3 right-3 z-50 flex flex-col items-end gap-2 print:hidden sm:bottom-4 sm:right-4 lg:hidden">
+        {isMobileAssistantOpen && (
           <div
             id="ai-assistant-panel"
             className="h-[clamp(22rem,68dvh,42rem)] max-h-[calc(100dvh-4.5rem)] w-[min(34rem,calc(100vw-1rem))] overflow-hidden rounded-2xl shadow-2xl"
@@ -1314,9 +1330,11 @@ export default function ResultsPage() {
               risk_category={assistantRiskCategory}
               context={assistantContext}
               issueHotspots={assistantIssueHotspots}
-              isOpen={isAssistantOpen}
+              isOpen={isMobileAssistantOpen}
+              showToggleControl
+              autoExecuteActions
               onFocusIssue={handleFocusIssue}
-              onToggle={() => setIsAssistantOpen(false)}
+              onToggle={() => setIsMobileAssistantOpen(false)}
             />
           </div>
         )}
@@ -1325,13 +1343,13 @@ export default function ResultsPage() {
           id="assistant-toggle-button"
           variant="outline"
           size="sm"
-          onClick={() => setIsAssistantOpen((prev) => !prev)}
+          onClick={() => setIsMobileAssistantOpen((prev) => !prev)}
           className="shadow-lg"
-          aria-expanded={isAssistantOpen}
+          aria-expanded={isMobileAssistantOpen}
           aria-controls="ai-assistant-panel"
         >
           <MessageCircle className="mr-2 h-5 w-5" />
-          {isAssistantOpen ? "Close Assistant" : "Ask AI"}
+          {isMobileAssistantOpen ? "Close Assistant" : "Ask AI"}
         </Button>
       </div>
     </div>

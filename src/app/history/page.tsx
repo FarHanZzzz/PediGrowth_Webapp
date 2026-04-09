@@ -209,27 +209,49 @@ function humanConcern(level: string): string {
 export default function HistoryPage() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | HistoryStatus>("all");
+  const [localRows, setLocalRows] = useState<HistoryRow[]>([]);
   const [cloudRows, setCloudRows] = useState<HistoryRow[]>([]);
 
   useEffect(() => {
     let active = true;
 
-    fetchRecentResultsFromCloud(200)
-      .then((records) => {
-        if (!active) return;
-        setCloudRows(buildRowsFromCloudRecords(records));
-      })
-      .catch(() => {
-        if (!active) return;
-        setCloudRows([]);
-      });
+    const hydrateLocal = () => {
+      if (!active) return;
+      setLocalRows(buildRowsFromSessionStorage());
+    };
+
+    hydrateLocal();
+    const localInterval = window.setInterval(hydrateLocal, 8000);
 
     return () => {
       active = false;
+      window.clearInterval(localInterval);
     };
   }, []);
 
-  const localRows = useMemo(() => buildRowsFromSessionStorage(), []);
+  useEffect(() => {
+    let active = true;
+
+    const hydrateCloud = () => {
+      fetchRecentResultsFromCloud(200)
+        .then((records) => {
+          if (!active) return;
+          setCloudRows(buildRowsFromCloudRecords(records));
+        })
+        .catch(() => {
+          if (!active) return;
+          setCloudRows([]);
+        });
+    };
+
+    hydrateCloud();
+    const cloudInterval = window.setInterval(hydrateCloud, 15000);
+
+    return () => {
+      active = false;
+      window.clearInterval(cloudInterval);
+    };
+  }, []);
 
   const allRows = useMemo(() => {
     const byId = new Map<string, HistoryRow>();

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { collectResultIds, readResultRaw, readSession, writeSession } from "@/lib/session/sessionStorage";
+import { fetchRecentResultsFromCloud, type CloudResultRecord } from "@/lib/db/cloudStorage";
 import {
   CONCERN_LABELS,
   FOLLOWUP_BADGE_STYLES,
@@ -72,7 +73,7 @@ interface Row {
   clinicianFeedbackUpdatedAt: string | null;
 }
 
-function loadRows(): Row[] {
+function buildRowsFromSessionStorage(): Row[] {
   if (typeof window === "undefined") return [];
   const ids = collectResultIds(window.sessionStorage);
   const rows: Row[] = [];
@@ -108,8 +109,119 @@ function loadRows(): Row[] {
   });
 }
 
+function buildRowsFromCloudRecords(records: CloudResultRecord[]): Row[] {
+  const rows: Row[] = [];
+
+  for (const record of records) {
+    const payload = (record.payload ?? null) as ParsedResult | null;
+    if (!payload || typeof payload !== "object") {
+      continue;
+    }
+
+    rows.push({
+      id: record.id,
+      childName: String(payload?.session?.nickname ?? "Child"),
+      ageMonths: typeof payload?.session?.ageMonths === "number" ? payload.session.ageMonths : null,
+      analyzedAt:
+        payload?.analyzedAt ??
+        payload?.run?.analyzedAt ??
+        record.updated_at ??
+        record.created_at ??
+        null,
+      concernLabel: CONCERN_LABELS[toConcernLevel(String(payload?.concerns?.overallLevel ?? "none"))],
+      summary: payload?.reports?.caregiver?.observationsText ?? null,
+      nextStep: payload?.reports?.caregiver?.monitoringGuidance ?? null,
+      qualityResult: String(payload?.quality?.result ?? "unknown"),
+      status: deriveStatus(payload),
+      followupPriority: String(payload?.concerns?.followupPriority ?? "routine"),
+      clinicianFeedbackNote:
+        typeof payload?.clinicianFeedback?.note === "string" && payload.clinicianFeedback.note.trim().length > 0
+          ? payload.clinicianFeedback.note.trim()
+          : null,
+      clinicianFeedbackUpdatedAt:
+        typeof payload?.clinicianFeedback?.updatedAt === "string" ? payload.clinicianFeedback.updatedAt : null,
+    });
+  }
+
+  return rows.sort((a, b) => {
+    const at = a.analyzedAt ? Date.parse(a.analyzedAt) : 0;
+    const bt = b.analyzedAt ? Date.parse(b.analyzedAt) : 0;
+    return bt - at;
+  });
+}
+
 export default function ParentPortalPage() {
-  const rows = useMemo(() => loadRows(), []);
+  const [localRows, setLocalRows] = useState<Row[]>([]);
+  const [cloudRows, setCloudRows] = useState<Row[]>([]);
+
+  useEffect(() => {
+    let active = true;
+
+    const hydrateLocal = () => {
+      if (!active) return;
+      setLocalRows(buildRowsFromSessionStorage());
+    };
+
+    hydrateLocal();
+    const localInterval = window.setInterval(hydrateLocal, 8000);
+
+    return () => {
+      active = false;
+      window.clearInterval(localInterval);
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    const hydrateCloud = () => {
+      fetchRecentResultsFromCloud(200)
+        .then((records) => {
+          if (!active) return;
+          setCloudRows(buildRowsFromCloudRecords(records));
+        })
+        .catch(() => {
+          if (!active) return;
+          setCloudRows([]);
+        });
+    };
+
+    hydrateCloud();
+    const cloudInterval = window.setInterval(hydrateCloud, 15000);
+
+    return () => {
+      active = false;
+      window.clearInterval(cloudInterval);
+    };
+  }, []);
+
+  const rows = useMemo(() => {
+    const byId = new Map<string, Row>();
+
+    for (const row of cloudRows) {
+      byId.set(row.id, row);
+    }
+
+    for (const row of localRows) {
+      const existing = byId.get(row.id);
+      if (!existing) {
+        byId.set(row.id, row);
+        continue;
+      }
+
+      const existingTs = existing.analyzedAt ? Date.parse(existing.analyzedAt) : 0;
+      const rowTs = row.analyzedAt ? Date.parse(row.analyzedAt) : 0;
+      if (rowTs > existingTs) {
+        byId.set(row.id, row);
+      }
+    }
+
+    return Array.from(byId.values()).sort((a, b) => {
+      const at = a.analyzedAt ? Date.parse(a.analyzedAt) : 0;
+      const bt = b.analyzedAt ? Date.parse(b.analyzedAt) : 0;
+      return bt - at;
+    });
+  }, [cloudRows, localRows]);
 
   // GMA state — local completion tracking
   const [gmaSubmitted, setGmaSubmitted] = useState<GMAScreeningResult | null>(() => {
