@@ -6,6 +6,8 @@ import {
   Video,
   Camera,
   Upload,
+  Circle,
+  Square,
   ChevronDown,
   CheckCircle2,
   XCircle,
@@ -40,6 +42,14 @@ import {
 } from "@/lib/session/sessionStorage";
 import { getApprovedHeroClip, getHeroClipDefinition } from "@/lib/demo/heroManifest";
 import { runCapturePreflight, type CapturePreflightResult } from "@/lib/quality/capturePreflight";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const TIPS = [
   { text: "Record from the front — have your child walk toward or away from the camera", do: true },
@@ -173,10 +183,151 @@ export default function CapturePage() {
   const [isClinicianContextOpen, setIsClinicianContextOpen] = useState(() =>
     hasAnyContextValue(readSavedContextDraft()),
   );
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const recordFileInputRef = useRef<HTMLInputElement>(null);
+  const uploadFileInputRef = useRef<HTMLInputElement>(null);
+  const [previewVideoElement, setPreviewVideoElement] = useState<HTMLVideoElement | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [isRecordingCamera, setIsRecordingCamera] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
   const heroClip = getHeroClipDefinition();
   const approvedHeroClip = getApprovedHeroClip();
   const validationMode = process.env.NEXT_PUBLIC_VALIDATION_MODE === "true";
+
+  const closeCamera = (options?: { clearError?: boolean }) => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((track) => track.stop());
+    }
+
+    setCameraStream(null);
+    setIsCameraOpen(false);
+    setIsRecordingCamera(false);
+    if (options?.clearError ?? true) {
+      setCameraError(null);
+    }
+  };
+
+  const applySelectedVideo = (file: File) => {
+    if (videoURL) URL.revokeObjectURL(videoURL);
+
+    setVideoFile(file);
+    setVideoURL(URL.createObjectURL(file));
+    setSourceType("upload");
+    setSourceClipId(null);
+    setApprovedForDemo(null);
+    setHeroClipError(null);
+    setPreflightResult(null);
+    setPreflightError(null);
+    setActiveTab("review");
+  };
+
+  const openRecordFilePickerFallback = () => {
+    if (recordFileInputRef.current) {
+      recordFileInputRef.current.click();
+    }
+  };
+
+  const startCameraCapture = async () => {
+    if (typeof window === "undefined") {
+      openRecordFilePickerFallback();
+      return;
+    }
+
+    const supportsCamera =
+      typeof navigator !== "undefined" &&
+      !!navigator.mediaDevices?.getUserMedia &&
+      typeof MediaRecorder !== "undefined";
+
+    if (!supportsCamera) {
+      openRecordFilePickerFallback();
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" } },
+        audio: false,
+      });
+
+      setCameraStream(stream);
+      setIsCameraOpen(true);
+      setCameraError(null);
+    } catch {
+      setCameraError("Camera access was unavailable. Please allow camera access or upload an existing video.");
+      openRecordFilePickerFallback();
+    }
+  };
+
+  const startRecordingFromCamera = () => {
+    if (!cameraStream) return;
+
+    try {
+      recordedChunksRef.current = [];
+
+      const preferredTypes = [
+        "video/webm;codecs=vp9",
+        "video/webm;codecs=vp8",
+        "video/webm",
+      ];
+      const supportedType = preferredTypes.find(
+        (type) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(type),
+      );
+
+      const recorder = supportedType
+        ? new MediaRecorder(cameraStream, { mimeType: supportedType })
+        : new MediaRecorder(cameraStream);
+
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (event: BlobEvent) => {
+        if (event.data.size > 0) {
+          recordedChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onerror = () => {
+        setCameraError("Recording failed. Please try again or upload an existing video.");
+        setIsRecordingCamera(false);
+      };
+
+      recorder.onstop = () => {
+        const chunks = recordedChunksRef.current;
+        if (chunks.length === 0) {
+          setCameraError("No video was captured. Please try recording again.");
+          return;
+        }
+
+        const mimeType = recorder.mimeType || "video/webm";
+        const ext = mimeType.includes("webm") ? "webm" : "mp4";
+        const blob = new Blob(chunks, { type: mimeType });
+        const file = new File([blob], `capture-${Date.now()}.${ext}`, { type: mimeType });
+
+        applySelectedVideo(file);
+        closeCamera();
+      };
+
+      recorder.start();
+      setIsRecordingCamera(true);
+      setCameraError(null);
+    } catch {
+      setCameraError("Could not start recording. Please try again or upload an existing video.");
+      setIsRecordingCamera(false);
+    }
+  };
+
+  const stopRecordingFromCamera = () => {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state === "inactive") return;
+
+    recorder.stop();
+    setIsRecordingCamera(false);
+  };
 
   useEffect(() => {
     const raw = readSessionRaw();
@@ -194,6 +345,36 @@ export default function CapturePage() {
       }
     }
   }, [router]);
+
+  useEffect(() => {
+    if (!isCameraOpen || !cameraStream || !previewVideoElement) {
+      return;
+    }
+
+    previewVideoElement.srcObject = cameraStream;
+
+    previewVideoElement
+      .play()
+      .catch(() => {
+        setCameraError("Preview could not start automatically. You can still try recording.");
+      });
+
+    return () => {
+      previewVideoElement.pause();
+      previewVideoElement.srcObject = null;
+    };
+  }, [cameraStream, isCameraOpen, previewVideoElement]);
+
+  useEffect(() => {
+    return () => {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+      }
+      if (cameraStream) {
+        cameraStream.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, [cameraStream]);
 
   useEffect(() => {
     let cancelled = false;
@@ -245,16 +426,7 @@ export default function CapturePage() {
 
     // Clear input value so selecting the same file again triggers onChange
     e.target.value = "";
-
-    setVideoFile(file);
-    setVideoURL(URL.createObjectURL(file));
-    setSourceType("upload");
-    setSourceClipId(null);
-    setApprovedForDemo(null);
-    setHeroClipError(null);
-    setPreflightResult(null);
-    setPreflightError(null);
-    setActiveTab("review");
+    applySelectedVideo(file);
   }
 
   function updateContextField<K extends keyof ClinicianContextDraft>(
@@ -501,12 +673,7 @@ export default function CapturePage() {
                 size="lg"
                 className="touch-target w-full gap-2 text-base font-semibold"
                 id="capture-record"
-                onClick={() => {
-                  if (fileInputRef.current) {
-                    fileInputRef.current.setAttribute("capture", "environment");
-                    fileInputRef.current.click();
-                  }
-                }}
+                onClick={startCameraCapture}
               >
                 <Camera className="h-4 w-4" />
                 Record Video
@@ -517,9 +684,8 @@ export default function CapturePage() {
                 className="touch-target w-full gap-2 text-base"
                 id="capture-upload"
                 onClick={() => {
-                  if (fileInputRef.current) {
-                    fileInputRef.current.removeAttribute("capture");
-                    fileInputRef.current.click();
+                  if (uploadFileInputRef.current) {
+                    uploadFileInputRef.current.click();
                   }
                 }}
               >
@@ -528,8 +694,69 @@ export default function CapturePage() {
               </Button>
             </div>
 
+            <Dialog
+              open={isCameraOpen}
+              onOpenChange={(open) => {
+                if (!open) {
+                  closeCamera();
+                }
+              }}
+            >
+              <DialogContent className="max-w-md" showCloseButton={!isRecordingCamera}>
+                <DialogHeader>
+                  <DialogTitle>Record Video</DialogTitle>
+                  <DialogDescription>
+                    Capture a short front-view walking clip. Keep the phone steady at about waist height.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-3">
+                  <div className="overflow-hidden rounded-lg border border-border/60 bg-black">
+                    <video
+                      ref={setPreviewVideoElement}
+                      autoPlay
+                      playsInline
+                      muted
+                      className="h-56 w-full object-cover"
+                    />
+                  </div>
+
+                  {cameraError && (
+                    <p className="text-xs text-destructive">{cameraError}</p>
+                  )}
+
+                  {!isRecordingCamera ? (
+                    <Button type="button" className="w-full gap-2" onClick={startRecordingFromCamera}>
+                      <Circle className="h-4 w-4" />
+                      Start Recording
+                    </Button>
+                  ) : (
+                    <Button type="button" variant="destructive" className="w-full gap-2" onClick={stopRecordingFromCamera}>
+                      <Square className="h-4 w-4" />
+                      Stop And Use Video
+                    </Button>
+                  )}
+                </div>
+
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => closeCamera()} disabled={isRecordingCamera}>
+                    Cancel
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
             <input
-              ref={fileInputRef}
+              ref={recordFileInputRef}
+              type="file"
+              accept="video/*"
+              capture="environment"
+              className="hidden"
+              onChange={handleFileSelect}
+            />
+
+            <input
+              ref={uploadFileInputRef}
               type="file"
               accept="video/*"
               className="hidden"
