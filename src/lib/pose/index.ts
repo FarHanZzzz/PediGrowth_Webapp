@@ -27,8 +27,8 @@ export async function createPoseProvider(
 }
 
 /**
- * Extract landmarks from all frames of a video element.
- * Processes at target FPS for the FULL playable video duration.
+ * Extract landmarks from a video element.
+ * Processes at target FPS for the configured extraction window.
  */
 export async function extractLandmarkSequence(
   provider: PoseProvider,

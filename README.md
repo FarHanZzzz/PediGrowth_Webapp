@@ -81,8 +81,9 @@ The frontend uses Next.js server API routes under `/api/pipeline/*` to call the 
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `NEXT_PUBLIC_SUPABASE_URL` | Optional | Supabase project URL (future DB) |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Optional | Supabase anonymous key |
+| `NEXT_PUBLIC_SUPABASE_URL` | Required for share links and navigator persistence | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Required for authenticated Supabase session reads | Supabase anonymous key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Required for share link create/resolve and navigator message persistence | Supabase service role key (server-only) |
 | `GAIT_PIPELINE_API_URL` | Optional | Python backend URL (default: `localhost:8000`) |
 | `OPENAI_API_KEY` | Optional | For AI Navigator feature |
 
@@ -97,7 +98,7 @@ pedi-growth/
 │   │   ├── analysis/     # Client-side gait analysis (angles, cycles, features)
 │   │   ├── api/          # Backend API client
 │   │   ├── copilot/      # AI navigator system prompt
-│   │   ├── db/           # Supabase client (future)
+│   │   ├── db/           # Supabase clients (browser, server, admin)
 │   │   ├── export/       # PDF report export
 │   │   ├── policy/       # Clinical policy (routing, thresholds, language safety)
 │   │   ├── pose/         # MediaPipe pose integration
@@ -121,7 +122,7 @@ pedi-growth/
 │   └── manifest.csv      # Dataset manifest
 ├── tests/                # Test suite (node:test)
 ├── docs/                 # Documentation (PRD, clinical context)
-└── supabase/             # Database migrations (future)
+└── supabase/             # Database migrations
 ```
 
 ## Test Suite

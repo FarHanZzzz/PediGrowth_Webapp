@@ -11,7 +11,7 @@
 // This is a STRUCTURED OBSERVATION CHECKLIST for parents.
 // It is NOT a substitute for a GMA-certified clinical assessment.
 
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -133,23 +133,20 @@ export default function GMAScreeningChecklist({
     WrithingClassification | FidgetyClassification | null
   >(existingResult?.clinicianClassification ?? null);
 
-  const toggleSign = useCallback(
-    (id: string) => {
-      if (submitted && !clinicianView) return; // read-only after submit
-      setObservedIds((prev) => {
-        const next = new Set(prev);
-        if (next.has(id)) {
-          next.delete(id);
-        } else {
-          next.add(id);
-        }
-        return next;
-      });
-    },
-    [submitted, clinicianView],
-  );
+  const toggleSign = (id: string) => {
+    if (submitted && !clinicianView) return; // read-only after submit
+    setObservedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
 
-  const handleSubmit = useCallback(() => {
+  const handleSubmit = () => {
     const result = computeGMAScreeningResult({
       correctedAgeWeeks,
       observedSignIds: observedIds,
@@ -158,7 +155,7 @@ export default function GMAScreeningChecklist({
     });
     setSubmitted(result);
     onComplete?.(result);
-  }, [correctedAgeWeeks, observedIds, clinicianClass, conditionsMet, onComplete]);
+  };
 
   // ── Not applicable gate ───────────────────────────────────
   if (!applicable) {
