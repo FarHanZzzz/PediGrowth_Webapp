@@ -16,7 +16,7 @@
   --secondary: oklch(0.95 0.012 210);
   --secondary-foreground: oklch(0.32 0.025 220);
   --muted: oklch(0.95 0.008 215);
-  --muted-foreground: oklch(0.53 0.02 220);
+  --muted-foreground: oklch(0.45 0.02 220);
   --accent: oklch(0.9 0.035 170);
   --accent-foreground: oklch(0.27 0.045 170);
   --destructive: oklch(0.55 0.2 25);
@@ -153,6 +153,7 @@
       radial-gradient(circle at 12% -8%, color-mix(in oklch, var(--primary) 17%, transparent) 0, transparent 40%),
       radial-gradient(circle at 92% 6%, color-mix(in oklch, var(--accent) 22%, transparent) 0, transparent 34%);
     font-feature-settings: "rlig" 1, "calt" 1;
+    font-weight: 450;
   }
 }
 

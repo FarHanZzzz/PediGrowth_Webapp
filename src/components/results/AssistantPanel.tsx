@@ -348,6 +348,7 @@ export default function AssistantPanel({
   const quickPrompts = [
     ...suggestedPrompts,
   ];
+  const onboardingPrompts = Array.from(new Set([...quickPrompts, ...CAPABILITY_PROMPTS])).slice(0, 6);
 
   return (
     <Card
@@ -416,7 +417,7 @@ export default function AssistantPanel({
           <CardContent className="flex-1 min-h-0 p-0">
             <div
               ref={scrollRef}
-              className="h-full min-h-0 overflow-y-auto p-3"
+              className="h-full min-h-0 overflow-y-auto overscroll-contain p-3"
               aria-live="polite"
               role="log"
               aria-label="Assistant conversation"
@@ -427,7 +428,7 @@ export default function AssistantPanel({
                   <p className="mb-1 text-sm font-medium">Ask about your results</p>
                   <p className="mb-4 text-xs">I can explain metrics, confidence, visit prep, and next steps</p>
                   <div className="space-y-2">
-                    {quickPrompts.map((prompt) => (
+                    {onboardingPrompts.map((prompt) => (
                       <button
                         key={prompt}
                         onClick={() => {
@@ -529,24 +530,26 @@ export default function AssistantPanel({
             </div>
           )}
 
-          <CardFooter className="border-t bg-gray-50 p-3">
+          <CardFooter className="shrink-0 border-t bg-gray-50 p-3">
             <form className="w-full space-y-2" onSubmit={handleSubmit}>
-              <div className="flex flex-wrap gap-1">
-                {CAPABILITY_PROMPTS.map((prompt) => (
-                  <button
-                    key={prompt}
-                    type="button"
-                    onClick={() => {
-                      setInput(prompt);
-                      inputRef.current?.focus();
-                    }}
-                    className="rounded-full border bg-white px-2 py-1 text-[11px] text-muted-foreground hover:border-blue-300 hover:text-blue-700"
-                    disabled={isLoading}
-                  >
-                    {prompt}
-                  </button>
-                ))}
-              </div>
+              {messages.length > 0 && (
+                <div className="flex gap-1 overflow-x-auto pb-1">
+                  {CAPABILITY_PROMPTS.map((prompt) => (
+                    <button
+                      key={prompt}
+                      type="button"
+                      onClick={() => {
+                        setInput(prompt);
+                        inputRef.current?.focus();
+                      }}
+                      className="shrink-0 rounded-full border bg-white px-2 py-1 text-[11px] text-muted-foreground hover:border-blue-300 hover:text-blue-700"
+                      disabled={isLoading}
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               <Textarea
                 ref={inputRef}
@@ -554,7 +557,7 @@ export default function AssistantPanel({
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Ask a question about your results..."
-                className="min-h-[60px] resize-none text-sm"
+                className="min-h-[56px] max-h-32 resize-none text-sm"
                 disabled={isLoading}
                 aria-label="Message input"
               />
@@ -598,7 +601,7 @@ export default function AssistantPanel({
             </form>
           </CardFooter>
 
-          <div className="border-t bg-gray-100 px-3 py-2 text-center text-[10px] text-gray-500">{DISCLAIMER_TEXT}</div>
+          <div className="border-t bg-gray-100 px-3 py-2 text-center text-[10px] leading-tight text-gray-500">{DISCLAIMER_TEXT}</div>
         </>
       )}
     </Card>

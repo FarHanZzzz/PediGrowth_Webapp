@@ -55,6 +55,20 @@ const CONCERN_DOMAINS = [
   { key: "pathDeviation", label: "Path deviation", desc: "Walking in a straight line vs. veering" },
 ];
 
+const DOMAIN_DAILY_IMPACT: Record<string, string> = {
+  asymmetry: "One side may seem to work harder than the other, especially during longer walks.",
+  irregularRhythm: "Step timing may vary, which can make walking look less smooth or more effortful.",
+  lateralInstability: "Side-to-side balance may be less steady, especially when turning or walking faster.",
+  pathDeviation: "Your child may drift off a straight path and need more visual or caregiver guidance.",
+};
+
+const DOMAIN_MONITORING_FOCUS: Record<string, string> = {
+  asymmetry: "Watch whether one side tires sooner or is used less during play.",
+  irregularRhythm: "Watch for step timing changes across the day or with fatigue.",
+  lateralInstability: "Track near-falls, stumbles, or hesitation during direction changes.",
+  pathDeviation: "Track whether straight-path walking improves with cueing and a clear walkway.",
+};
+
 type HotspotSeverity = "low" | "medium" | "high";
 
 interface AssistantIssueHotspot {
@@ -65,6 +79,35 @@ interface AssistantIssueHotspot {
   severity: HotspotSeverity;
   frameIndex: number;
   timestampMs: number;
+}
+
+interface SessionMotorAssessment {
+  delayFlag?: "on_track" | "watch" | "concern";
+  summaryNote?: string;
+  achievedFromPriorCount?: number;
+  expectedFromPriorCount?: number;
+  delayedMilestonesCount?: number;
+  aimsNotObservedCount?: number;
+}
+
+interface SessionClinicalAssessment {
+  redFlags?: string[];
+  urgentRedFlagCount?: number;
+  motorDelayAssessment?: SessionMotorAssessment | null;
+  aimsCompleted?: boolean;
+  assessedAt?: string;
+  supplementalMetadata?: {
+    source?: "supplemental";
+    linkedResultId?: string;
+    completedAt?: string;
+  };
+}
+
+interface ResultWithClinicalAssessment {
+  clinicalAssessment?: SessionClinicalAssessment;
+  session?: {
+    clinicalAssessment?: SessionClinicalAssessment;
+  };
 }
 
 function toHotspotSeverity(level: string): HotspotSeverity {
@@ -272,6 +315,8 @@ export default function ResultsPage() {
   const [exportAvailable, setExportAvailable] = useState(false);
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
   const [jumpToFrameIndex, setJumpToFrameIndex] = useState<number | null>(null);
+  const [sessionClinicalAssessment, setSessionClinicalAssessment] =
+    useState<SessionClinicalAssessment | null>(null);
 
   useEffect(() => {
     // Try sessionStorage first (fast, same-session), then IndexedDB (persistent)
@@ -289,6 +334,23 @@ export default function ResultsPage() {
       }).catch(() => {});
     }
   }, [resultId]);
+
+  useEffect(() => {
+    if (result) {
+      const embedded = result as unknown as ResultWithClinicalAssessment;
+      const linkedClinicalAssessment =
+        embedded.clinicalAssessment ?? embedded.session?.clinicalAssessment ?? null;
+      if (linkedClinicalAssessment) {
+        setSessionClinicalAssessment(linkedClinicalAssessment);
+        return;
+      }
+    }
+
+    const session = readSession<{ clinicalAssessment?: SessionClinicalAssessment }>();
+    if (session?.clinicalAssessment) {
+      setSessionClinicalAssessment(session.clinicalAssessment);
+    }
+  }, [result, resultId]);
 
   useEffect(() => {
     if (!result || result.run.classification !== "real_analysis") return;
@@ -387,6 +449,22 @@ export default function ResultsPage() {
     };
   }, [result]);
 
+  useEffect(() => {
+    if (!result || !reportBundle) return;
+
+    if (result.reports?.caregiver && result.reports?.clinician && result.reports?.handoffText) {
+      return;
+    }
+
+    const updated = {
+      ...result,
+      reports: reportBundle,
+    };
+
+    setResult(updated);
+    writeResult(result.id, updated);
+  }, [result, reportBundle]);
+
   const practicalRetakeTips = useMemo(() => {
     if (!result) return [];
 
@@ -460,6 +538,41 @@ export default function ResultsPage() {
     return buildAssistantIssueHotspots(result);
   }, [result]);
 
+  const parentImpactRows = useMemo(() => {
+    if (!result) return [];
+
+    return CONCERN_DOMAINS
+      .map((domain) => {
+        const isSuppressed = result.concerns.suppressedDomains.includes(domain.key);
+        if (isSuppressed) return null;
+
+        const level = toConcernLevel(String(result.concerns[domain.key as keyof typeof result.concerns]));
+        if (level === "none") return null;
+
+        return {
+          key: domain.key,
+          label: domain.label,
+          level,
+          impact: DOMAIN_DAILY_IMPACT[domain.key] ?? "This signal may affect day-to-day walking quality.",
+          monitor: DOMAIN_MONITORING_FOCUS[domain.key] ?? "Monitor this pattern in everyday walking.",
+        };
+      })
+      .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+  }, [result]);
+
+  const supplementalMotorMetadata = useMemo(() => {
+    const metadata = sessionClinicalAssessment?.supplementalMetadata;
+    if (!metadata || metadata.source !== "supplemental") {
+      return null;
+    }
+
+    if (metadata.linkedResultId && metadata.linkedResultId !== resultId) {
+      return null;
+    }
+
+    return metadata;
+  }, [resultId, sessionClinicalAssessment]);
+
   const handleFocusIssue = (frameIndex: number) => {
     setActiveTab("video");
     setJumpToFrameIndex(null);
@@ -502,6 +615,9 @@ export default function ResultsPage() {
   const followupPriority = toFollowupPriority(result.concerns.followupPriority);
   const followupLabel = FOLLOWUP_LABELS[followupPriority];
   const followupSummary = FOLLOWUP_CALLOUT_TEXT[followupPriority];
+  const motorSummaryTimestamp =
+    supplementalMotorMetadata?.completedAt ?? sessionClinicalAssessment?.assessedAt ?? null;
+  const hasMotorScreenAttached = Boolean(sessionClinicalAssessment?.motorDelayAssessment);
 
   if (isValidationFailure) {
     return (
@@ -612,7 +728,7 @@ export default function ResultsPage() {
 
       <div className="mx-auto max-w-6xl space-y-5 px-4 py-6">
         <div className="text-center space-y-3">
-          <h1 data-display="true" className="text-3xl font-semibold">Walking Summary for {nickname}</h1>
+          <h1 data-display="true" className="text-3xl font-bold">Walking Summary for {nickname}</h1>
           <p className="mx-auto max-w-2xl text-sm text-muted-foreground">
             A simple parent-facing summary of what this clip showed, what could not be assessed, and what to do next.
           </p>
@@ -642,29 +758,29 @@ export default function ResultsPage() {
         <Card className="bg-surface-container-low">
           <CardContent className="grid gap-3 p-4 sm:grid-cols-3">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Overall observation</p>
-              <p className="mt-1 text-sm font-medium">
+              <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Overall observation</p>
+              <p className="mt-1 text-base font-semibold">
                 {reportBundle?.caregiver.observationsText ??
                   (result.concerns.overallLevel === "none"
                     ? "No notable gait concern signals were detected in this clip."
                     : "This clip shows movement patterns worth reviewing more closely.")}
               </p>
               {reportBundle?.caregiver.contextSignalText && (
-                <p className="mt-2 text-xs text-muted-foreground">
+                <p className="mt-2 text-sm text-foreground/85">
                   {reportBundle.caregiver.contextSignalText}
                 </p>
               )}
             </div>
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">How certain this run is</p>
-              <p className="mt-1 text-sm">{reportBundle?.caregiver.confidenceText ?? result.quality.confidenceNotes}</p>
+              <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">How certain this run is</p>
+              <p className="mt-1 text-sm font-medium text-foreground/90">{reportBundle?.caregiver.confidenceText ?? result.quality.confidenceNotes}</p>
             </div>
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Recommended next step</p>
+              <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Recommended next step</p>
               <Badge variant="outline" className={`mt-1 text-[10px] ${FOLLOWUP_BADGE_STYLES[followupPriority]}`}>
                 {followupLabel}
               </Badge>
-              <p className="mt-1 text-sm">
+              <p className="mt-1 text-sm font-medium text-foreground/90">
                 {followupSummary}
               </p>
             </div>
@@ -698,13 +814,125 @@ export default function ResultsPage() {
               role={followupPriority === "specialist" ? "alert" : undefined}
             >
               <p className="text-[11px] font-semibold uppercase tracking-wide">Clinical follow-up priority</p>
-              <p className="mt-1 text-sm font-semibold">{followupLabel}</p>
-              <p className="text-xs">{followupSummary}</p>
+              <p className="mt-1 text-base font-bold">{followupLabel}</p>
+              <p className="text-sm font-medium">{followupSummary}</p>
             </div>
 
             <Card className="bg-surface-container-lowest">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">What We Noticed In This Video</CardTitle>
+                <CardTitle className="text-base font-bold">What This Means Day-To-Day</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {parentImpactRows.length > 0 ? (
+                  <div className="space-y-2">
+                    {parentImpactRows.map((entry) => (
+                      <div key={entry.key} className="rounded-xl border bg-surface-container-low p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-semibold">{entry.label}</p>
+                          <Badge variant="outline" className={`text-[10px] ${CONCERN_BADGE_STYLES[entry.level]}`}>
+                            {CONCERN_PREFIX[entry.level]}: {CONCERN_LABELS[entry.level]}
+                          </Badge>
+                        </div>
+                        <p className="mt-1 text-sm text-foreground/90">{entry.impact}</p>
+                        <p className="mt-1 text-xs font-medium text-muted-foreground">Monitor: {entry.monitor}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-foreground/85">
+                    No major concern signal was detected in this clip. Keep routine observation and re-record if you notice changes.
+                  </p>
+                )}
+                <div className="rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
+                  These movement signals can reflect motor-control differences, but this tool cannot determine a neurological diagnosis.
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-surface-container-lowest">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-bold">Parent Action Plan (Next 7 Days)</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm text-foreground/90">
+                <p>1. Keep this result and clinician packet for your next visit.</p>
+                <p>2. Track if the observed walking pattern changes with fatigue, speed, or longer distance.</p>
+                <p>3. If falls, instability, or asymmetry increase, move follow-up earlier.</p>
+                <p>4. Capture one additional clip in good lighting for comparison.</p>
+              </CardContent>
+            </Card>
+
+            {supplementalMotorMetadata && (
+              <Card className="border-amber-300 bg-amber-50/70">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-bold text-amber-900">
+                    Supplemental motor context attached
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-1 text-xs text-amber-900/90">
+                  <p>
+                    Motor milestone screening was added after this gait analysis as supportive context.
+                  </p>
+                  <p>
+                    Use both outputs together for follow-up planning, not as a standalone diagnosis.
+                  </p>
+                  {motorSummaryTimestamp && (
+                    <p className="text-[11px] text-amber-900/70">
+                      Added: {new Date(motorSummaryTimestamp).toLocaleString()}
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            <Card className="bg-surface-container-lowest">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-bold">
+                  {supplementalMotorMetadata
+                    ? "Supplemental Motor Development Snapshot"
+                    : "Motor Development Snapshot"}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm text-foreground/90">
+                {sessionClinicalAssessment?.motorDelayAssessment ? (
+                  <>
+                    <p>
+                      <strong>Status:</strong>{" "}
+                      {sessionClinicalAssessment.motorDelayAssessment.delayFlag === "concern"
+                        ? "Evaluation recommended"
+                        : sessionClinicalAssessment.motorDelayAssessment.delayFlag === "watch"
+                          ? "Monitor closely"
+                          : "On track"}
+                    </p>
+                    <p>{sessionClinicalAssessment.motorDelayAssessment.summaryNote ?? "Motor milestone summary was captured for this session."}</p>
+                    {typeof sessionClinicalAssessment.motorDelayAssessment.expectedFromPriorCount === "number" &&
+                      typeof sessionClinicalAssessment.motorDelayAssessment.achievedFromPriorCount === "number" && (
+                        <p className="text-xs text-muted-foreground">
+                          Milestones achieved from prior stages: {sessionClinicalAssessment.motorDelayAssessment.achievedFromPriorCount} /
+                          {" "}{sessionClinicalAssessment.motorDelayAssessment.expectedFromPriorCount}
+                        </p>
+                      )}
+                    {supplementalMotorMetadata && (
+                      <p className="text-xs text-muted-foreground">
+                        Source: Optional motor check added after gait analysis.
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No motor milestone screening output is attached to this gait run yet.
+                  </p>
+                )}
+                {(sessionClinicalAssessment?.redFlags?.length ?? 0) > 0 && (
+                  <p className="text-xs font-medium text-foreground/85">
+                    Additional caregiver red flags noted: {sessionClinicalAssessment?.redFlags?.length}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="bg-surface-container-lowest">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-bold">What We Noticed In This Video</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 {CONCERN_DOMAINS.map((domain) => {
@@ -717,8 +945,8 @@ export default function ResultsPage() {
                     return (
                       <div key={domain.key} className="flex items-center justify-between rounded-2xl border border-dashed border-amber-300 bg-amber-50/60 p-3">
                         <div>
-                          <p className="text-sm font-medium">{domain.label}</p>
-                          <p className="text-xs text-muted-foreground">{domain.desc}</p>
+                          <p className="text-sm font-semibold">{domain.label}</p>
+                          <p className="text-sm text-foreground/80">{domain.desc}</p>
                         </div>
                         <Badge variant="outline" className="text-[10px] border-amber-300 bg-amber-100 text-amber-900">
                           Not assessed
@@ -730,8 +958,8 @@ export default function ResultsPage() {
                   return (
                     <div key={domain.key} className="flex items-center justify-between rounded-2xl bg-surface-container-low p-3">
                       <div>
-                        <p className="text-sm font-medium">{domain.label}</p>
-                        <p className="text-xs text-muted-foreground">{domain.desc}</p>
+                        <p className="text-sm font-semibold">{domain.label}</p>
+                        <p className="text-sm text-foreground/80">{domain.desc}</p>
                       </div>
                       <Badge
                         variant="outline"
@@ -748,9 +976,9 @@ export default function ResultsPage() {
             {result.concerns.suppressedDomains.length > 0 && (
               <Card className="bg-surface-container-lowest">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">What Could Not Be Assessed Clearly</CardTitle>
+                  <CardTitle className="text-base font-bold">What Could Not Be Assessed Clearly</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-2 text-xs text-muted-foreground">
+                <CardContent className="space-y-2 text-sm text-foreground/85">
                   <p>
                     Some movement areas did not have enough signal quality for a dependable interpretation in this recording.
                   </p>
@@ -764,9 +992,9 @@ export default function ResultsPage() {
 
             <Card className="bg-surface-container-lowest">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Tips For A Better Next Recording</CardTitle>
+                <CardTitle className="text-base font-bold">Tips For A Better Next Recording</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2 text-xs text-muted-foreground">
+              <CardContent className="space-y-2 text-sm text-foreground/85">
                 {practicalRetakeTips.map((tip) => (
                   <p key={tip} className="flex items-start gap-2">
                     <span className="mt-px">-</span>
@@ -779,31 +1007,47 @@ export default function ResultsPage() {
             {reportBundle && (
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">What To Do Next</CardTitle>
+                  <CardTitle className="text-base font-bold">What To Do Next</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-2 text-xs text-muted-foreground">
+                <CardContent className="space-y-2 text-sm text-foreground/85">
                   <p><strong>Monitoring:</strong> {reportBundle.caregiver.monitoringGuidance}</p>
                   <p><strong>Professional follow-up:</strong> {reportBundle.caregiver.professionalEvalGuidance}</p>
                   <details className="rounded-md border bg-muted/20 p-2">
                     <summary className="cursor-pointer">See clip limitations</summary>
                     <p className="mt-2">{reportBundle.caregiver.limitationsText}</p>
                   </details>
-                  <p className="text-[11px]">{reportBundle.caregiver.disclaimerText}</p>
+                  <p className="text-xs text-muted-foreground">{reportBundle.caregiver.disclaimerText}</p>
                 </CardContent>
               </Card>
             )}
 
+            <Card className="bg-surface-container-lowest">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-bold">Report Sync Status</CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm text-foreground/85">
+                This caregiver summary and clinician packet are now attached to this result and available in your local History page as a lightweight parent dashboard.
+              </CardContent>
+            </Card>
+
             <div className="flex flex-wrap gap-3">
               <Button
                 variant="secondary"
-                className="flex-1 gap-2 text-xs"
+                className="flex-1 gap-2 text-sm font-semibold"
+                onClick={() => router.push(`/concern?mode=supplemental&resultId=${resultId}`)}
+              >
+                {hasMotorScreenAttached ? "Update motor milestone check" : "Run motor milestone check"}
+              </Button>
+              <Button
+                variant="secondary"
+                className="flex-1 gap-2 text-sm font-semibold"
                 onClick={() => router.push(`/results/${resultId}/refine`)}
               >
                 Add notes for clinician
               </Button>
               <Button
                 variant="secondary"
-                className="flex-1 gap-2 text-xs"
+                className="flex-1 gap-2 text-sm font-semibold"
                 onClick={() => router.push(`/results/${resultId}/clinician`)}
               >
                 Open clinician packet
@@ -811,7 +1055,7 @@ export default function ResultsPage() {
               {hasTrace && (
                 <Button
                   variant="secondary"
-                  className="flex-1 gap-2 text-xs"
+                  className="flex-1 gap-2 text-sm font-semibold"
                   onClick={() => setActiveTab("video")}
                 >
                   <Video className="h-3.5 w-3.5" />
@@ -820,7 +1064,7 @@ export default function ResultsPage() {
               )}
               <Button
                 variant="secondary"
-                className="flex-1 gap-2 text-xs"
+                className="flex-1 gap-2 text-sm font-semibold"
                 onClick={() => {
                   const session = readSession<{
                     nickname?: string;
@@ -856,7 +1100,7 @@ export default function ResultsPage() {
               </Button>
               <Button
                 variant="secondary"
-                className="flex-1 gap-2 text-xs"
+                className="flex-1 gap-2 text-sm font-semibold"
                 onClick={() => router.push("/capture")}
               >
                 <Camera className="h-3.5 w-3.5" />
@@ -885,6 +1129,38 @@ export default function ResultsPage() {
                       Download Hero MP4
                     </Button>
                   </a>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="bg-surface-container-lowest">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-bold">Key Moments In This Clip</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {assistantIssueHotspots.length > 0 ? (
+                  <div className="space-y-2">
+                    {assistantIssueHotspots.map((spot) => (
+                      <div key={spot.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-surface-container-low p-2.5">
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">{spot.title}</p>
+                          <p className="text-xs text-muted-foreground">{spot.description}</p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-xs"
+                          onClick={() => handleFocusIssue(spot.frameIndex)}
+                        >
+                          Jump to this moment
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No specific key moments were extracted from this clip.
+                  </p>
                 )}
               </CardContent>
             </Card>
@@ -930,7 +1206,7 @@ export default function ResultsPage() {
         {isAssistantOpen && (
           <div
             id="ai-assistant-panel"
-            className="h-[clamp(24rem,72dvh,46rem)] max-h-[calc(100dvh-5.5rem)] w-[clamp(18rem,calc(100vw-1rem),30rem)] max-w-[calc(100vw-1rem)] overflow-auto rounded-2xl shadow-2xl sm:resize"
+            className="h-[clamp(22rem,68dvh,42rem)] max-h-[calc(100dvh-4.5rem)] w-[min(34rem,calc(100vw-1rem))] overflow-hidden rounded-2xl shadow-2xl"
           >
             <AssistantPanel
               resultId={result.id}

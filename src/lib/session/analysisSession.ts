@@ -70,6 +70,13 @@ export interface ClinicianIntakeContext {
   correctedAge?: string | null;
 }
 
+export interface ClinicianFeedbackPayload {
+  note: string;
+  updatedAt: string;
+  visibility: 'parent_and_clinician';
+  source?: string;
+}
+
 export interface AnalysisSessionResult {
   id: string;
   session: { nickname: string; ageMonths: number; intakeContext?: ClinicianIntakeContext };
@@ -132,6 +139,7 @@ export interface AnalysisSessionResult {
   backendInference?: BackendInference;
   inferenceDecision?: InferenceDecision;
   videoUrl?: string;
+  clinicianFeedback?: ClinicianFeedbackPayload;
 }
 
 export interface RunAnalysisOptions {

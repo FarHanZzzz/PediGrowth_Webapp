@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -24,12 +24,15 @@ import EventTimeline from "@/components/results/EventTimeline";
 import KeyFrameGallery from "../../../../components/results/KeyFrameGallery";
 import AnalysisTracePanel from "@/components/results/AnalysisTracePanel";
 import HowAnalysisWorksPanel from "@/components/results/HowAnalysisWorksPanel";
-import Tier1Gait3DPanel from "@/components/results/Tier1Gait3DPanel";
-// ── Clinical assessment components (Motor Delay + GMFCS) ──────────
+
+// ── Clinical assessment components (Motor Delay + GMFCS + GMA) ────
 import GMFCSCard from "@/components/clinical/GMFCSCard";
 import MotorDelayAssessmentSummary from "@/components/clinical/MotorDelayAssessmentSummary";
-import { readSession } from "@/lib/session/sessionStorage";
-import type { MotorDelayAssessment } from "@/lib/clinical/frameworks";
+import GMAAssessmentCard from "@/components/clinical/GMAAssessmentCard";
+import { readResultRaw, readSession, writeResult } from "@/lib/session/sessionStorage";
+import type { ClinicianFeedbackPayload } from "@/lib/session/analysisSession";
+import type { MotorDelayAssessment, GMAScreeningResult } from "@/lib/clinical/frameworks";
+import { isGMAApplicableByMonths } from "@/lib/clinical/frameworks";
 import {
   formatDomainLabel,
   useResultViewModel,
@@ -54,29 +57,10 @@ const CONCERN_DOMAINS = [
 
 type ClinicianTab = "snapshot" | "evidence" | "handoff";
 
-type SnapshotSectionKey =
-  | "decision"
-  | "context"
-  | "findings"
-  | "confidence"
-  | "followup"
-  | "scales"
-  | "quality";
-
 const CLINICIAN_TABS: Array<{ key: ClinicianTab; label: string }> = [
   { key: "snapshot", label: "Snapshot" },
   { key: "evidence", label: "Advanced Evidence" },
   { key: "handoff", label: "Handoff & Notes" },
-];
-
-const SNAPSHOT_SECTIONS: Array<{ key: SnapshotSectionKey; label: string }> = [
-  { key: "decision", label: "Decision" },
-  { key: "context", label: "Context" },
-  { key: "findings", label: "Findings" },
-  { key: "confidence", label: "Confidence" },
-  { key: "followup", label: "Follow-up" },
-  { key: "scales", label: "Scales" },
-  { key: "quality", label: "Quality Limits" },
 ];
 
 interface AiInsightResponse {
@@ -88,6 +72,21 @@ interface AiInsightResponse {
   disclaimer: string;
 }
 
+interface SupplementalAssessmentMetadata {
+  source?: "supplemental";
+  linkedResultId?: string;
+  completedAt?: string;
+}
+
+interface ClinicalAssessmentData {
+  redFlags?: string[];
+  urgentRedFlagCount?: number;
+  motorDelayAssessment?: MotorDelayAssessment | null;
+  aimsCompleted?: boolean;
+  assessedAt?: string;
+  supplementalMetadata?: SupplementalAssessmentMetadata;
+}
+
 export default function ClinicianResultPage() {
   const params = useParams();
   const router = useRouter();
@@ -95,10 +94,7 @@ export default function ClinicianResultPage() {
   const noteStorageKey = `gaitbridge_clinician_note_${resultId}`;
 
   const [activeTab, setActiveTab] = useState<ClinicianTab>("snapshot");
-  const [activeSnapshotSection, setActiveSnapshotSection] = useState<SnapshotSectionKey>("decision");
   const [jumpToFrameIndex, setJumpToFrameIndex] = useState<number | null>(null);
-  const [currentEvidenceFrameIndex, setCurrentEvidenceFrameIndex] = useState<number | null>(null);
-  const [isTier1FrameSyncLocked, setIsTier1FrameSyncLocked] = useState(true);
   const [aiInsight, setAiInsight] = useState<AiInsightResponse | null>(null);
   const [isGeneratingAiInsight, setIsGeneratingAiInsight] = useState(false);
   const [aiInsightError, setAiInsightError] = useState<string | null>(null);
@@ -113,25 +109,33 @@ export default function ClinicianResultPage() {
       return "";
     }
   });
+  const hasHydratedClinicianFeedback = useRef(false);
+  const [publishedFeedbackAt, setPublishedFeedbackAt] = useState<string | null>(null);
+  const [feedbackSyncStatus, setFeedbackSyncStatus] = useState<{
+    tone: "success" | "error";
+    message: string;
+  } | null>(null);
   const [shareLinkStatus, setShareLinkStatus] = useState<string | null>(null);
   const [isCreatingShareLink, setIsCreatingShareLink] = useState(false);
 
   // ── Clinical assessment data from Route A (Concern Navigator) ────
   // This data is persisted by the concern page when the parent completes
   // the motor milestone and AIMS checklists. It is read here for display.
-  const [clinicalAssessmentData, setClinicalAssessmentData] = useState<{
-    redFlags?: string[];
-    urgentRedFlagCount?: number;
-    motorDelayAssessment?: MotorDelayAssessment | null;
-    aimsCompleted?: boolean;
-    assessedAt?: string;
-  } | null>(null);
+  const [clinicalAssessmentData, setClinicalAssessmentData] = useState<ClinicalAssessmentData | null>(null);
+  // ── GMA Screening Result — read from session if parent completed GMA checklist ──
+  const [gmaResult, setGmaResult] = useState<GMAScreeningResult | null>(null);
 
   useEffect(() => {
     // Read clinical assessment from session (set by concern/page.tsx)
-    const session = readSession<{ clinicalAssessment?: typeof clinicalAssessmentData }>();
+    const session = readSession<{
+      clinicalAssessment?: ClinicalAssessmentData;
+      gmaScreeningResult?: GMAScreeningResult;
+    }>();
     if (session?.clinicalAssessment) {
       setClinicalAssessmentData(session.clinicalAssessment);
+    }
+    if (session?.gmaScreeningResult) {
+      setGmaResult(session.gmaScreeningResult);
     }
   }, []);
 
@@ -149,10 +153,39 @@ export default function ClinicianResultPage() {
     isCannotAssessRealRun,
   } = useResultViewModel(resultId);
 
+  useEffect(() => {
+    if (clinicalAssessmentData || !result) {
+      return;
+    }
+
+    const embedded =
+      (result as { clinicalAssessment?: ClinicalAssessmentData }).clinicalAssessment ??
+      ((result.session as { clinicalAssessment?: ClinicalAssessmentData } | undefined)
+        ?.clinicalAssessment ?? null);
+
+    if (embedded) {
+      setClinicalAssessmentData(embedded);
+    }
+  }, [clinicalAssessmentData, result]);
+
   const evidenceByDomain = useMemo(
     () => new Map(concernEvidence.map((entry) => [entry.domain, entry])),
     [concernEvidence]
   );
+
+  useEffect(() => {
+    if (hasHydratedClinicianFeedback.current || !result) {
+      return;
+    }
+
+    const persistedFeedback = result.clinicianFeedback;
+    if (persistedFeedback?.note) {
+      setClinicianNote(persistedFeedback.note);
+      setPublishedFeedbackAt(persistedFeedback.updatedAt);
+    }
+
+    hasHydratedClinicianFeedback.current = true;
+  }, [result]);
 
   useEffect(() => {
     try {
@@ -166,6 +199,15 @@ export default function ClinicianResultPage() {
       // Ignore local storage access errors in restricted browsing contexts.
     }
   }, [clinicianNote, noteStorageKey]);
+
+  useEffect(() => {
+    if (!feedbackSyncStatus) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => setFeedbackSyncStatus(null), 4500);
+    return () => window.clearTimeout(timer);
+  }, [feedbackSyncStatus]);
 
   useEffect(() => {
     if (!shareLinkStatus) {
@@ -263,20 +305,17 @@ export default function ClinicianResultPage() {
   const hasIntakeContext = intakeContextRows.some(
     (entry) => entry.value !== notCapturedInWorkflow,
   );
+  const supplementalMotorMetadata = clinicalAssessmentData?.supplementalMetadata;
+  const isSupplementalMotorContext =
+    supplementalMotorMetadata?.source === "supplemental" &&
+    (!supplementalMotorMetadata.linkedResultId || supplementalMotorMetadata.linkedResultId === resultId);
+  const supplementalMotorTimestamp =
+    supplementalMotorMetadata?.completedAt ?? clinicalAssessmentData?.assessedAt ?? null;
+  const hasMotorContextData =
+    Boolean(clinicalAssessmentData?.motorDelayAssessment) ||
+    (clinicalAssessmentData?.redFlags?.length ?? 0) > 0;
 
   const packetTimestamp = result.analyzedAt ?? result.run.analyzedAt;
-  const canShowTier1ThreeD =
-    result.run.classification === "real_analysis" && hasTrace && hasVideo && Boolean(videoUrl);
-  const tier1UnavailableReasons: string[] = [];
-  if (result.run.classification !== "real_analysis") {
-    tier1UnavailableReasons.push("Run is not marked as a real analysis.");
-  }
-  if (!hasTrace) {
-    tier1UnavailableReasons.push("Analysis trace data is missing.");
-  }
-  if (!hasVideo || !videoUrl) {
-    tier1UnavailableReasons.push("Retained source video is unavailable in local storage.");
-  }
   const clipUsabilityLabel =
     result.quality.result === "pass"
       ? "Usable for interpretation"
@@ -333,8 +372,6 @@ export default function ClinicianResultPage() {
     };
   });
 
-  const snapshotSectionClass = (section: SnapshotSectionKey) =>
-    activeSnapshotSection === section ? "" : "hidden print:block";
 
   const handlePrintPacket = () => {
     window.print();
@@ -480,6 +517,83 @@ export default function ClinicianResultPage() {
     }
   };
 
+  const handleSaveFeedbackForParent = () => {
+    const trimmedNote = clinicianNote.trim();
+    if (!trimmedNote) {
+      setFeedbackSyncStatus({
+        tone: "error",
+        message: "Add a clinician note before publishing feedback.",
+      });
+      return;
+    }
+
+    const raw = readResultRaw(resultId);
+    if (!raw) {
+      setFeedbackSyncStatus({
+        tone: "error",
+        message: "Result record was not found in this session. Reopen the result and try again.",
+      });
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      const updatedAt = new Date().toISOString();
+      const feedbackPayload: ClinicianFeedbackPayload = {
+        note: trimmedNote,
+        updatedAt,
+        visibility: "parent_and_clinician",
+        source: "clinician_packet",
+      };
+
+      const updated = {
+        ...parsed,
+        clinicianFeedback: feedbackPayload,
+      };
+      writeResult(resultId, updated);
+      setPublishedFeedbackAt(updatedAt);
+      setFeedbackSyncStatus({
+        tone: "success",
+        message: "Feedback published to this assessment. Parent portal can now display it.",
+      });
+    } catch {
+      setFeedbackSyncStatus({
+        tone: "error",
+        message: "Could not persist feedback due to a malformed local result payload.",
+      });
+    }
+  };
+
+  const handleClearPublishedFeedback = () => {
+    const raw = readResultRaw(resultId);
+    if (!raw) {
+      setFeedbackSyncStatus({
+        tone: "error",
+        message: "Result record was not found in this session.",
+      });
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      const updated = { ...parsed } as Record<string, unknown>;
+      delete updated.clinicianFeedback;
+      writeResult(resultId, updated);
+
+      setClinicianNote("");
+      setPublishedFeedbackAt(null);
+      setFeedbackSyncStatus({
+        tone: "success",
+        message: "Published feedback cleared for this assessment.",
+      });
+    } catch {
+      setFeedbackSyncStatus({
+        tone: "error",
+        message: "Could not clear feedback due to a malformed local result payload.",
+      });
+    }
+  };
+
   return (
     <div className="clinician-packet min-h-dvh bg-linear-to-b from-background to-muted/30">
       {isBestEffort && (
@@ -532,341 +646,192 @@ export default function ClinicianResultPage() {
           </div>
         </div>
 
-        <div className={activeTab === "snapshot" ? "space-y-4" : "hidden print:block print:space-y-4"}>
-
-        <div className="print-hidden rounded-xl border border-border/60 bg-surface-container-low p-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Snapshot segments</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {SNAPSHOT_SECTIONS.map((section) => (
-              <button
-                key={section.key}
-                type="button"
-                onClick={() => setActiveSnapshotSection(section.key)}
-                className={`rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                  activeSnapshotSection === section.key
-                    ? "border-border bg-surface-container-lowest text-foreground"
-                    : "border-border/60 bg-background text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {section.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <Card className={`print-section ${snapshotSectionClass("decision")}`}>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">1. Clinical Decision Snapshot</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded-lg border bg-muted/20 p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Overall signal</p>
-                <Badge variant="outline" className={`mt-2 text-[10px] ${CONCERN_BADGE_STYLES[overallConcernLevel]}`}>
-                  {overallConcernLabel}
-                </Badge>
-              </div>
-
-              <div className="rounded-lg border bg-muted/20 p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Follow-up priority</p>
-                <Badge variant="outline" className={`mt-2 text-[10px] ${FOLLOWUP_BADGE_STYLES[followUpPriority]}`}>
-                  {followUpRecommendation}
-                </Badge>
-                <p className="mt-2 text-xs text-muted-foreground">{FOLLOWUP_CALLOUT_TEXT[followUpPriority]}</p>
-              </div>
-
-              <div className="rounded-lg border bg-muted/20 p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Coverage</p>
-                <p className="mt-1 text-sm font-medium">
-                  {result.concerns.assessedDomains.length} assessed / {CONCERN_DOMAINS.length} domains
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Not assessed in this recording: {result.concerns.suppressedDomains.length}
-                </p>
-              </div>
-
-              <div className="rounded-lg border bg-muted/20 p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Recording usability</p>
-                <p className="mt-1 text-sm font-medium">{clipUsabilityLabel}</p>
-              </div>
-            </div>
-
-            <div className="rounded-lg border bg-muted/20 p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Interpretation at a glance</p>
-              <p className="mt-1 text-sm">{observedSummary}</p>
-            </div>
-
-            <div
-              className={`rounded-lg border p-3 ${FOLLOWUP_CALLOUT_STYLES[followUpPriority]}`}
-              role={followUpPriority === "specialist" ? "alert" : undefined}
-            >
-              <p className="text-[11px] font-semibold uppercase tracking-wide">Urgency signal</p>
-              <div className="mt-1 flex items-start gap-2 text-sm">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                <div>
-                  <p className="font-semibold">{followUpRecommendation}</p>
-                  <p className="text-xs">{FOLLOWUP_CALLOUT_TEXT[followUpPriority]}</p>
+        <div className={activeTab === "snapshot" ? "space-y-6" : "hidden print:block print:space-y-6"}>
+          
+          {/* Dashboard Row 1: Hero Banner Component */}
+          <Card className={`print-section border ${FOLLOWUP_CALLOUT_STYLES[followUpPriority]} shadow-sm`}>
+            <CardContent className="p-0">
+              <div className="flex flex-col md:flex-row">
+                {/* Left side: Key Clinical Signal */}
+                <div className="flex flex-1 flex-col justify-center border-b p-5 md:border-b-0 md:border-r border-border/40">
+                  <p className="text-[11px] font-bold uppercase tracking-widest opacity-80">Overall Diagnostic Signal</p>
+                  <div className="mt-2 flex items-center gap-3">
+                    <Badge variant="outline" className={`text-xs px-2.5 py-1 uppercase tracking-wide font-bold ${CONCERN_BADGE_STYLES[overallConcernLevel]}`}>
+                      {overallConcernLabel}
+                    </Badge>
+                  </div>
+                  <p className="mt-4 text-[13px] font-medium leading-relaxed opacity-90">{observedSummary}</p>
+                </div>
+                {/* Right side: Action Plan & Context */}
+                <div className="flex-1 p-5">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 opacity-80" />
+                    <div>
+                      <p className="font-bold tracking-tight">{followUpRecommendation}</p>
+                      <p className="mt-1 text-[13px] opacity-80">{FOLLOWUP_CALLOUT_TEXT[followUpPriority]}</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex flex-col gap-1 rounded-md bg-background/40 p-3 text-xs leading-relaxed text-foreground/80 opacity-90">
+                    <span className="mb-0.5 font-semibold">Contextual Summary</span>
+                    <p>Case: {result.session.nickname} • View: {result.concerns.viewLabel}</p>
+                    <p>Source video: {result.run.sourceClipFilename ?? "Uploaded clip"}</p>
+                    {packetTimestamp && <p className="opacity-80">Captured: {new Date(packetTimestamp).toLocaleString()}</p>}
+                  </div>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* New Grid layout: Findings Left, Scales Right */}
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+            
+            {/* Left Col: Core Domain Findings */}
+            <div className="md:col-span-7 space-y-4">
+              <div>
+                <h3 className="flex items-center gap-2 text-sm font-semibold tracking-tight text-foreground/90">
+                  <Stethoscope className="h-4 w-4 text-primary/80" />
+                  Primary Domain Findings
+                </h3>
+                <p className="mt-0.5 text-xs text-muted-foreground pt-1">
+                  System covered {result.concerns.assessedDomains.length} / {CONCERN_DOMAINS.length} core domains.{' '}
+                  {result.quality.confidenceNotes}
+                </p>
+              </div>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-2">
+                {CONCERN_DOMAINS.map((domain) => {
+                  const level = toConcernLevel(result.concerns[domain.key]);
+                  const isSuppressed = result.concerns.suppressedDomains.includes(domain.key);
+                  const evidence = evidenceByDomain.get(domain.key);
+
+                  return (
+                    <div key={domain.key} className="rounded-xl border bg-card/60 p-4 shadow-sm transition-shadow hover:shadow-md">
+                      <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide mb-3">{domain.label}</p>
+                      <div className="flex flex-col gap-2 items-start">
+                        <Badge
+                          variant="outline"
+                          className={`text-[11px] px-2 py-0.5 font-medium ${
+                            isSuppressed
+                              ? "border-amber-300 bg-amber-100 text-amber-900"
+                              : CONCERN_BADGE_STYLES[level]
+                          }`}
+                        >
+                          {isSuppressed ? "Not assessed" : CONCERN_LABELS[level]}
+                        </Badge>
+                        <p className="text-xs text-muted-foreground leading-relaxed mt-1 line-clamp-2">
+                          {evidence?.explanation ?? "No detailed narrative available."}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Technical provenance dropdown */}
+              <details className="print-hidden group mt-4">
+                <summary className="cursor-pointer text-[12px] font-medium text-muted-foreground/80 hover:text-muted-foreground transition-colors list-none flex items-center gap-1.5 focus:outline-hidden">
+                  <span className="text-[10px] group-open:rotate-90 transition-transform">▶</span> Technical provenance
+                </summary>
+                <div className="mt-2.5 flex flex-wrap items-center gap-2 pl-3">
+                  <RunProvenanceBadge run={result.run} />
+                  <Badge variant="outline" className="text-[10px] border-border/60 text-muted-foreground/80 bg-muted/10">
+                    {result.run.modelLabel}
+                  </Badge>
+                </div>
+              </details>
             </div>
-          </CardContent>
-        </Card>
 
-        <Card className={`print-section ${snapshotSectionClass("context")}`}>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">2. Context for This Recording</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <div className="rounded-lg border bg-muted/20 p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Case details</p>
-                <p className="mt-1 text-xs text-muted-foreground">Case: {result.session.nickname}</p>
-                <p className="text-xs text-muted-foreground">Result ID: {resultId}</p>
-                <p className="text-xs text-muted-foreground">
-                  Packet time: {packetTimestamp ? new Date(packetTimestamp).toLocaleString() : "Unknown"}
-                </p>
-              </div>
-
-              <div className="rounded-lg border bg-muted/20 p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Recording details</p>
-                <p className="mt-1 text-xs text-muted-foreground">Source: {result.run.sourceClipFilename ?? "Uploaded clip"}</p>
-                <p className="text-xs text-muted-foreground">Direction: {direction}</p>
-                <p className="text-xs text-muted-foreground">View: {result.concerns.viewLabel}</p>
-                <p className="text-xs text-muted-foreground">Assessment mode: {formatDomainLabel(result.assessmentMode)}</p>
-              </div>
-
-              <div className="rounded-lg border bg-muted/20 p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Clinical context from intake
-                </p>
-                {hasIntakeContext ? (
-                  intakeContextRows
-                    .filter((entry) => entry.value !== notCapturedInWorkflow)
-                    .map((entry) => (
-                      <p key={entry.label} className="mt-1 text-xs text-muted-foreground">
-                        {entry.label}: {entry.value}
+            {/* Right Col: Scales */}
+            <div className="md:col-span-5 space-y-4">
+              <h3 className="text-sm font-semibold tracking-tight text-foreground/90 pb-1">Clinical Scales</h3>
+              
+              {hasMotorContextData && (
+                <Card className="print-section border-amber-300 bg-amber-50/60 shadow-sm">
+                  <CardContent className="p-3">
+                    <p className="text-xs text-amber-900/90 font-medium">
+                      {isSupplementalMotorContext
+                        ? "Supplemental Motor Milestone Context"
+                        : "Motor Milestone Context"}
+                    </p>
+                    <p className="mt-1 text-[11px] text-amber-900/80 leading-relaxed">
+                      {isSupplementalMotorContext
+                        ? "This motor screening was added after gait analysis and should be interpreted as supportive context."
+                        : "Motor screening context is available from the concern workflow."}
+                    </p>
+                    {supplementalMotorTimestamp && (
+                      <p className="mt-1.5 text-[10px] text-amber-900/60 uppercase tracking-wide">
+                        Captured: {new Date(supplementalMotorTimestamp).toLocaleString()}
                       </p>
-                    ))
-                ) : (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    No optional clinician context was captured during intake.
-                  </p>
-                )}
-              </div>
-            </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
 
-            <details className="print-hidden rounded-lg border bg-muted/20 p-3">
-              <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Technical provenance (optional details)
-              </summary>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <RunProvenanceBadge run={result.run} />
-                <Badge variant="outline" className="text-[10px]">
-                  {result.run.modelLabel}
-                </Badge>
-                <Badge variant="outline" className="text-[10px]">
-                  Overall signal: {overallConcernLabel}
-                </Badge>
-              </div>
-            </details>
-          </CardContent>
-        </Card>
+              {/* GMFCS */}
+              <GMFCSCard interactive={true} />
 
-        <Card className={`print-section ${snapshotSectionClass("findings")}`}>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <Stethoscope className="h-4 w-4" />
-              3. Domain Findings Summary
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-3">
-              {CONCERN_DOMAINS.map((domain) => {
-                const level = toConcernLevel(result.concerns[domain.key]);
-                const evidence = evidenceByDomain.get(domain.key);
-                const isSuppressed = result.concerns.suppressedDomains.includes(domain.key);
+              {/* GMA Assessment Card */}
+              {(() => {
+                const ageMonths = result.session.ageMonths ?? 0;
+                const gmaApplicable = isGMAApplicableByMonths(ageMonths);
+
+                if (!gmaApplicable) return null;
+
+                if (gmaResult) {
+                  return (
+                    <div className="space-y-1">
+                      <p className="px-1 text-[10px] font-bold uppercase tracking-widest text-violet-800/60 mb-2">
+                        Prechtl GMA Panel
+                      </p>
+                      <GMAAssessmentCard result={gmaResult} showInterpretation={true} />
+                    </div>
+                  );
+                }
 
                 return (
-                  <div key={domain.key} className="rounded-lg border p-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm font-medium">{domain.label}</p>
-                      <Badge
-                        variant="outline"
-                        className={`text-[10px] ${
-                          isSuppressed
-                            ? "border-amber-300 bg-amber-100 text-amber-900"
-                            : CONCERN_BADGE_STYLES[level]
-                        }`}
-                      >
-                        {isSuppressed ? "Not assessed" : CONCERN_LABELS[level]}
-                      </Badge>
-                    </div>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      {evidence?.explanation ?? "No detailed evidence narrative is available for this domain."}
+                  <div className="rounded-xl border border-dashed border-violet-300 bg-violet-50/40 p-4 shadow-[inset_0_2px_4px_rgba(0,0,0,0.01)]">
+                    <p className="text-xs font-bold uppercase tracking-wider text-violet-900">
+                      Prechtl GMA Candidate
+                    </p>
+                    <p className="mt-2 text-[11px] leading-relaxed text-violet-800/80">
+                      Child is {ageMonths} months old. Assess parent observations via the Parent Portal to populate General Movements Assessment scoring here.
                     </p>
                   </div>
                 );
-              })}
+              })()}
+
+              {/* Motor Delay Assessment */}
+              {clinicalAssessmentData?.motorDelayAssessment && (
+                <MotorDelayAssessmentSummary
+                  assessment={clinicalAssessmentData.motorDelayAssessment}
+                  ageMonths={result.session.ageMonths ?? 0}
+                  childName={result.session.nickname ?? "Child"}
+                />
+              )}
             </div>
-          </CardContent>
-        </Card>
+          </div>
 
-        <Card className={`print-section ${snapshotSectionClass("confidence")}`}>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">4. Assessability and Confidence</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="rounded-lg border bg-muted/20 p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Assessability matrix</p>
-              <div className="mt-2 overflow-x-auto rounded-md border bg-background">
-                <table className="w-full min-w-130 border-collapse text-left text-xs">
-                  <thead>
-                    <tr className="border-b bg-muted/30">
-                      <th className="px-3 py-2 font-semibold text-foreground">Domain</th>
-                      <th className="px-3 py-2 font-semibold text-foreground">Status</th>
-                      <th className="px-3 py-2 font-semibold text-foreground">Interpretive note</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {assessabilityRows.map((row) => (
-                      <tr key={row.domainLabel} className="border-b last:border-b-0">
-                        <td className="px-3 py-2 font-medium text-foreground">{row.domainLabel}</td>
-                        <td className="px-3 py-2">
-                          <Badge variant="outline" className={`text-[10px] ${row.statusClass}`}>
-                            {row.statusLabel}
-                          </Badge>
-                        </td>
-                        <td className="px-3 py-2 text-muted-foreground">{row.reason}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="rounded-lg border bg-muted/20 p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Confidence note</p>
-                <p className="mt-2 text-xs text-muted-foreground">{result.quality.confidenceNotes}</p>
-              </div>
-
-              <div className="rounded-lg border bg-muted/20 p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Coverage summary</p>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Assessed domains: {assessedDomainsSummary}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Not assessed in this recording: {notAssessedDomainsSummary}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className={`print-section ${snapshotSectionClass("followup")}`}>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">5. Recommended Follow-up Actions</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-xs text-muted-foreground">
-            <div className="rounded-lg border bg-muted/20 p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Primary recommendation</p>
-              <p className="mt-2 text-sm font-medium text-foreground">{followUpRecommendation}</p>
-              <p className="mt-1">
-                Use as structured support for clinical judgment, not as a standalone diagnosis.
-              </p>
-            </div>
-
-            <div className="rounded-lg border bg-muted/20 p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Action checklist</p>
-              <ul className="mt-2 list-disc space-y-1 pl-4">
-                <li>Review observed domains in clinical context: {assessedDomainsSummary}.</li>
-                <li>Document uncertainty for domains not assessed in this recording: {notAssessedDomainsSummary}.</li>
-                <li>If confidence is limited, request additional angle capture or repeat recording.</li>
-              </ul>
-            </div>
-
-            <p>
-              Operational sharing controls remain in section 8 to keep interpretation and logistics separate.
-            </p>
-          </CardContent>
-        </Card>
-
-        <div className={snapshotSectionClass("scales")}>
-          {/* ── NEW: Section 6 — Standardized Clinical Scales ──────── */}
-          {/* GMFCS Classification — always shown for clinician documentation */}
-          <GMFCSCard interactive={true} />
-
-          {/* Motor Delay Assessment Summary — only shown if Route A data exists */}
-          {clinicalAssessmentData?.motorDelayAssessment && (
-            <MotorDelayAssessmentSummary
-              assessment={clinicalAssessmentData.motorDelayAssessment}
-              ageMonths={result.session.ageMonths ?? 0}
-              childName={result.session.nickname ?? "Child"}
-            />
-          )}
-
-          {/* Red flags from Route A concern navigator */}
+          {/* Red flags block */}
           {clinicalAssessmentData?.redFlags && clinicalAssessmentData.redFlags.length > 0 && (
-            <Card className="print-section">
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-sm">
-                  <AlertTriangle className="h-4 w-4" />
-                  Route A: Caregiver-Reported Red Flags
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <ul className="list-disc space-y-1 pl-4 text-xs text-muted-foreground">
-                  {clinicalAssessmentData.redFlags.map((flag, index) => (
-                    <li key={index}>{flag}</li>
-                  ))}
-                </ul>
-                {clinicalAssessmentData.assessedAt && (
-                  <p className="text-[11px] text-muted-foreground/60">
-                    Assessed: {new Date(clinicalAssessmentData.assessedAt).toLocaleString()}
-                  </p>
-                )}
-              </CardContent>
-            </Card>
+            <div className="mt-4 rounded-xl border border-red-200 bg-red-50/40 p-4 shadow-sm">
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-red-900">
+                <AlertTriangle className="h-4 w-4" />
+                {isSupplementalMotorContext
+                  ? "Supplemental Caregiver-Reported Red Flags"
+                  : "Caregiver-Reported Red Flags"}
+              </h3>
+              <ul className="mt-3 list-disc space-y-1.5 pl-5 text-xs leading-relaxed text-red-900/80">
+                {clinicalAssessmentData.redFlags.map((flag, index) => (
+                  <li key={index}>{flag}</li>
+                ))}
+              </ul>
+              {clinicalAssessmentData.assessedAt && (
+                <p className="mt-3 border-t border-red-200/50 pt-2 text-[10px] uppercase tracking-wide text-red-900/50">
+                  Assessed: {new Date(clinicalAssessmentData.assessedAt).toLocaleString()}
+                </p>
+              )}
+            </div>
           )}
-        </div>
-
-        <Card className={`print-section ${snapshotSectionClass("quality")}`}>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">7. Quality Limits and Caveats</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm">{result.quality.confidenceNotes}</p>
-
-            {result.quality.failureReasons.length > 0 && (
-              <div className="rounded-lg border border-red-200 bg-red-50/70 p-3">
-                <p className="font-semibold text-red-800">Quality limits requiring caution</p>
-                <ul className="mt-1 list-disc space-y-1 pl-4 text-red-900/80">
-                  {result.quality.failureReasons.map((reason, index) => (
-                    <li key={index}>{reason}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {result.quality.borderlineReasons.length > 0 && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3">
-                <p className="font-semibold text-amber-800">Factors lowering confidence</p>
-                <ul className="mt-1 list-disc space-y-1 pl-4 text-amber-900/80">
-                  {result.quality.borderlineReasons.map((reason, index) => (
-                    <li key={index}>{reason}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {suppressedDomains.length > 0 && (
-              <p className="text-sm text-muted-foreground">
-                Not assessed in this recording: {notAssessedDomainsSummary}
-              </p>
-            )}
-          </CardContent>
-        </Card>
-
         </div>
 
         <Card className={`print-section print-hidden ${activeTab === "evidence" ? "" : "hidden"}`}>
@@ -877,12 +842,7 @@ export default function ClinicianResultPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <details className="rounded-lg border bg-muted/20 p-3">
-              <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Open advanced evidence panels
-              </summary>
-
-              <div className="mt-3 space-y-4">
+            <div className="space-y-4 rounded-lg border bg-muted/20 p-3">
                 <div className="grid gap-3 md:grid-cols-2">
                   <div className="rounded-lg border bg-background p-3">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Why this result appears</p>
@@ -932,7 +892,6 @@ export default function ClinicianResultPage() {
                     jumpToFrameIndex={jumpToFrameIndex}
                     audience="clinician"
                     showAdvancedControls={false}
-                    onFrameChange={(frameIndex) => setCurrentEvidenceFrameIndex(frameIndex)}
                   />
                 ) : hasTrace ? (
                   <p className="text-xs text-muted-foreground">
@@ -944,42 +903,61 @@ export default function ClinicianResultPage() {
                   </p>
                 )}
 
-                {canShowTier1ThreeD && result.trace ? (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between rounded-lg border bg-muted/20 px-3 py-2 text-xs">
-                      <p className="text-muted-foreground">
-                        Tier 1 frame sync: {isTier1FrameSyncLocked ? "Locked to video timeline" : "Independent control"}
-                      </p>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-7 px-2 text-[11px]"
-                        onClick={() => setIsTier1FrameSyncLocked((prev) => !prev)}
-                      >
-                        {isTier1FrameSyncLocked ? "Unlock" : "Lock"}
-                      </Button>
+                {hasTrace && result.trace && (() => {
+                  const p = result.trace.pipeline;
+                  const cycles = result.trace.gaitCycles;
+                  const usablePct = Math.round(p.usableFramePct * 100);
+                  const lrRatio = p.leftSteps > 0 && p.rightSteps > 0
+                    ? Math.min(p.leftSteps, p.rightSteps) / Math.max(p.leftSteps, p.rightSteps)
+                    : null;
+                  const avgCycleMs = cycles.length > 0
+                    ? Math.round(cycles.reduce((sum, c) => sum + c.durationMs, 0) / cycles.length)
+                    : null;
+                  const symmetryLabel = lrRatio === null ? "No bilateral steps detected" :
+                    lrRatio >= 0.85 ? "Good L/R balance" :
+                    lrRatio >= 0.65 ? "Mild L/R imbalance" : "Notable L/R imbalance";
+                  const symmetryClass = lrRatio === null ? "text-muted-foreground" :
+                    lrRatio >= 0.85 ? "text-emerald-700" :
+                    lrRatio >= 0.65 ? "text-amber-700" : "text-red-700";
+                  return (
+                    <div className="rounded-lg border bg-background p-3">
+                      <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Gait Cycle Summary — Pipeline Output</p>
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        <div className="rounded-md bg-muted/40 px-3 py-2">
+                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Detected Steps</p>
+                          <p className="text-lg font-semibold text-foreground">{p.detectedSteps}</p>
+                          <p className="text-[11px] text-muted-foreground">L: {p.leftSteps} · R: {p.rightSteps}</p>
+                        </div>
+                        <div className="rounded-md bg-muted/40 px-3 py-2">
+                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Gait Cycles</p>
+                          <p className="text-lg font-semibold text-foreground">{cycles.length}</p>
+                          <p className="text-[11px] text-muted-foreground">{avgCycleMs !== null ? `~${avgCycleMs} ms avg` : "—"}</p>
+                        </div>
+                        <div className="rounded-md bg-muted/40 px-3 py-2">
+                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Usable Frames</p>
+                          <p className="text-lg font-semibold text-foreground">{usablePct}%</p>
+                          <p className="text-[11px] text-muted-foreground">{p.usableFrames} / {p.totalFrames} frames</p>
+                        </div>
+                        <div className="rounded-md bg-muted/40 px-3 py-2">
+                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Walk Direction</p>
+                          <p className="text-base font-semibold capitalize text-foreground">{p.direction}</p>
+                          <p className="text-[11px] text-muted-foreground">from classifier</p>
+                        </div>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <span className={`text-xs font-medium ${symmetryClass}`}>{symmetryLabel}</span>
+                        {lrRatio !== null && (
+                          <span className="text-xs text-muted-foreground">(ratio: {lrRatio.toFixed(2)})</span>
+                        )}
+                        {p.lrTrackingStable ? (
+                          <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-[10px] text-emerald-800">L/R tracking stable</Badge>
+                        ) : (
+                          <Badge variant="outline" className="border-amber-300 bg-amber-50 text-[10px] text-amber-900">L/R tracking uncertain</Badge>
+                        )}
+                      </div>
                     </div>
-
-                    <Tier1Gait3DPanel
-                      trace={result.trace}
-                      selectedFrameIndex={isTier1FrameSyncLocked ? currentEvidenceFrameIndex : jumpToFrameIndex}
-                      onFrameSelect={isTier1FrameSyncLocked ? undefined : setJumpToFrameIndex}
-                      syncLocked={isTier1FrameSyncLocked}
-                    />
-                  </div>
-                ) : (
-                  <div className="rounded-lg border border-dashed border-muted-foreground/30 bg-muted/20 p-3 text-xs text-muted-foreground">
-                    <p>Tier 1 3D movement view is unavailable for this run.</p>
-                    {tier1UnavailableReasons.length > 0 && (
-                      <ul className="mt-1.5 list-disc space-y-1 pl-4">
-                        {tier1UnavailableReasons.map((reason) => (
-                          <li key={reason}>{reason}</li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                )}
+                  );
+                })()}
 
                 {hasTrace && (
                   <>
@@ -1001,13 +979,12 @@ export default function ClinicianResultPage() {
 
                 {hasTrace && <AnalysisTracePanel trace={result.trace!} concernEvidence={concernEvidence} />}
                 <HowAnalysisWorksPanel result={result} />
-              </div>
-            </details>
+            </div>
 
             <div className="print-only rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
               <p className="font-semibold uppercase tracking-wide">Appendix note</p>
               <p className="mt-2">
-                Advanced evidence panels are interactive in digital view and collapsed by default.
+                Advanced evidence panels are interactive in digital view.
                 Use digital view for frame-level review.
               </p>
             </div>
@@ -1149,11 +1126,11 @@ export default function ClinicianResultPage() {
 
         <Card className={`print-section ${activeTab === "handoff" ? "" : "hidden print:block"}`}>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">10. Clinician Note (local)</CardTitle>
+            <CardTitle className="text-sm">10. Clinician Feedback for Parent Portal</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-xs text-muted-foreground print-hidden">
-              This note is saved in this browser only and is included in the printed packet.
+              Save this note to the assessment record to make it visible in the parent portal on this device/session.
             </p>
             <Textarea
               className="print-hidden min-h-28"
@@ -1161,6 +1138,28 @@ export default function ClinicianResultPage() {
               value={clinicianNote}
               onChange={(event) => setClinicianNote(event.target.value)}
             />
+            <div className="print-hidden flex flex-wrap gap-2">
+              <Button size="sm" className="gap-2" onClick={handleSaveFeedbackForParent}>
+                Publish feedback to parent portal
+              </Button>
+              <Button size="sm" variant="outline" className="gap-2" onClick={handleClearPublishedFeedback}>
+                Clear published feedback
+              </Button>
+            </div>
+            {publishedFeedbackAt && (
+              <p className="print-hidden text-[11px] text-muted-foreground">
+                Last published: {new Date(publishedFeedbackAt).toLocaleString()}
+              </p>
+            )}
+            {feedbackSyncStatus && (
+              <p
+                className={`print-hidden text-xs ${
+                  feedbackSyncStatus.tone === "success" ? "text-emerald-700" : "text-destructive"
+                }`}
+              >
+                {feedbackSyncStatus.message}
+              </p>
+            )}
             <div className="print-only rounded-lg border bg-muted/20 p-3 text-xs leading-relaxed">
               <p className="font-semibold uppercase tracking-wide">Clinician note</p>
               <p className="mt-2 whitespace-pre-wrap text-foreground">

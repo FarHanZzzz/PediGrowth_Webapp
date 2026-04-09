@@ -68,12 +68,63 @@ export default function AnalyzingPage() {
       return;
     }
 
-    const session = JSON.parse(raw);
+    let session: Record<string, unknown> | null = null;
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        session = parsed as Record<string, unknown>;
+      }
+    } catch {
+      session = null;
+    }
+
+    if (!session) {
+      // Recover from stale or malformed session payloads instead of crashing the page.
+      router.replace("/capture");
+      return;
+    }
+
     writeSession(session);
-    const sessionId = session.sessionId;
-    const nickname = session.nickname || "your child";
-    const ageMonths = session.ageMonths || 36;
-    const validationMode = Boolean(session.validationMode ?? (process.env.NEXT_PUBLIC_VALIDATION_MODE === "true"));
+
+    const sessionId = typeof session.sessionId === "string" ? session.sessionId : null;
+    const nickname =
+      typeof session.nickname === "string" && session.nickname.trim().length > 0
+        ? session.nickname
+        : "your child";
+    const ageMonths =
+      typeof session.ageMonths === "number" && Number.isFinite(session.ageMonths)
+        ? session.ageMonths
+        : 36;
+    const validationMode =
+      typeof session.validationMode === "boolean"
+        ? session.validationMode
+        : process.env.NEXT_PUBLIC_VALIDATION_MODE === "true";
+    const sourceType =
+      session.sourceType === "upload" ||
+      session.sourceType === "manifest_hero" ||
+      session.sourceType === "demo_fixture" ||
+      session.sourceType === "unknown"
+        ? session.sourceType
+        : "unknown";
+    const sourceClipId = typeof session.sourceClipId === "string" ? session.sourceClipId : null;
+    const sourceClipFilename =
+      typeof session.sourceClipFilename === "string"
+        ? session.sourceClipFilename
+        : (
+            typeof session.videoMeta === "object" &&
+            session.videoMeta !== null &&
+            "name" in session.videoMeta &&
+            typeof (session.videoMeta as { name?: unknown }).name === "string"
+          )
+            ? ((session.videoMeta as { name: string }).name)
+            : null;
+    const approvedForDemo = typeof session.approvedForDemo === "boolean" ? session.approvedForDemo : null;
+    const intakeContext =
+      typeof session.clinicianContext === "object" &&
+      session.clinicianContext !== null &&
+      !Array.isArray(session.clinicianContext)
+        ? session.clinicianContext
+        : undefined;
 
     if (!sessionId) {
       router.replace("/capture");
@@ -95,11 +146,11 @@ export default function AnalyzingPage() {
       },
       {
         validationMode,
-        sourceType: session.sourceType ?? "unknown",
-        sourceClipId: session.sourceClipId ?? null,
-        sourceClipFilename: session.sourceClipFilename ?? session.videoMeta?.name ?? null,
-        approvedForDemo: session.approvedForDemo ?? null,
-        intakeContext: session.clinicianContext,
+        sourceType,
+        sourceClipId,
+        sourceClipFilename,
+        approvedForDemo,
+        intakeContext,
       },
     )
       .then((result) => {

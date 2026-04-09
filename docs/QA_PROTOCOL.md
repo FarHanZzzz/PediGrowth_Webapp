@@ -150,3 +150,47 @@ jobs:
   build:
     - npm run build
 ```
+
+---
+
+## 6. MVP Architecture Assessment & Logical Fallacies
+
+**Overall MVP Readiness:**
+The current MVP has a substantial and impressive UI/UX that convincingly *demonstrates* a unified neuromuscular diagnostic pipeline. The separation of the Clinician View vs. Patient View is visually excellent for a hackathon. However, there is a **major structural/logical fallacy** in the data flow that must be accounted for before a production launch or during a deep-dive technical Q&A with judges.
+
+### Critical Logical Fallacy: The "Local Storage Island"
+- **The Problem:** The application currently relies on the browser's `localStorage` and `sessionStorage` (e.g., `src/lib/session/sessionStorage.ts`) to persist analysis results, videos, and clinician notes. 
+- **The Fallacy:** If the application is hosted centrally and used on mobile, a patient accessing `/results/[id]` on their phone and a clinician accessing `/results/[id]/clinician` on their laptop are accessing **two completely independent data silos**. If a clinician types a note on their iPad, it saves to *their* iPad's local storage. The patient will never see it on their phone dashboard because there is no unified backend database (like Supabase, Firebase, or Postgres) synchronizing the `[id]`.
+- **Why it matters for the pitch:** If a judge asks, "Show us how the clinician inputs feedback and the patient receives it in real-time on their device," the demo will fail unless both portals are opened in different tabs of the **exact same browser on the exact same device**.
+
+### How to Address This During Your Pitch / Demo
+To defend the system without building an entire backend authentication system overnight:
+1. **The "Stateless Session" Pivot:** Explain that for the hackathon MVP, the system uses "Stateless Session Tokens" (the `[id]` in the URL). Because health data privacy (HIPAA) is paramount, the current prototype stores sensitive video and diagnostic data strictly on the processing device to guarantee zero-knowledge privacy during the demo.
+2. **The Production Roadmap:** Clearly state that the next iteration relies on a secure cloud-synced backend (you have the `supabase/` folder ready) using a Role-Based Access Control (RBAC) profiling system. When a clinician submits notes, the mutation will push up to a Supabase `assessment_notes` table, triggering a realtime subscription in the patient's mobile view.
+3. **Demo Strategy:** For the live demo, run the Clinician and Patient views side-by-side in a split-screen layout on the *same machine* so the `localStorage` state correctly syncs and proves the UI concept without exposing the lack of a backend.
+
+### Other Minor UI Caveats
+- **The Tier 1 3D Play Button:** In the Advanced Evidence section, the Tier 1 Gait 3D visualization has a "Play" button that usually appears disabled. This is because it is initialized with a `syncLocked={true}` state, locking the 3D frame strictly to the main annotated video timeline. If judges ask why they can't scrub the 3D view independently, point out the "Unlock" toggle button just above the 3D panel. Once unlocked, the play/pause logic functions independently.
+
+---
+
+## 7. Dual-Analysis and Agentic Orchestration Checks
+
+### Dual-Analysis Supplemental Flow
+- [ ] Route B result page shows "Run motor milestone check" CTA.
+- [ ] Entering supplemental concern flow with valid `resultId` preserves child context.
+- [ ] Saving supplemental motor check writes `supplementalMetadata` with `source`, `linkedResultId`, and `completedAt`.
+- [ ] Returning to linked result shows supplemental context banner.
+- [ ] Clinician packet shows supplemental context wording separate from primary gait findings.
+- [ ] Missing or stale `resultId` falls back to standard concern mode with recoverable notice.
+
+### Navigator Orchestration Metadata
+- [ ] `/api/navigator/chat` returns `orchestration_version` in every success response.
+- [ ] `/api/navigator/chat` returns `stage_trace` with deterministic stage labels.
+- [ ] Confidence-gated path sets `confidence_gate_triggered=true` and non-null `fallback_reason`.
+- [ ] Policy refusal path sets `policy_filtered=true` with policy-specific `filter_reason`.
+- [ ] LLM unavailable path gracefully falls back with `source=heuristic` and populated `stage_trace`.
+
+### Tier 1 3D Runtime Guard
+- [ ] No React warning: "Cannot update a component while rendering a different component" during Tier 1 play mode.
+- [ ] Frame scrub and autoplay both update frame index without cross-component render warnings.

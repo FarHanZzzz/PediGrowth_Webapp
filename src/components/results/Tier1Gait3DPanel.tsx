@@ -120,6 +120,7 @@ export default function Tier1Gait3DPanel({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rotateRafRef = useRef<number | null>(null);
   const playIntervalRef = useRef<number | null>(null);
+  const frameIndexRef = useRef(0);
 
   const [frameIndex, setFrameIndex] = useState(0);
   const [yawDeg, setYawDeg] = useState(18);
@@ -184,6 +185,10 @@ export default function Tier1Gait3DPanel({
   }, [trace.videoMeta.fps]);
 
   useEffect(() => {
+    frameIndexRef.current = frameIndex;
+  }, [frameIndex]);
+
+  useEffect(() => {
     if (!isAutoRotate) {
       if (rotateRafRef.current) {
         cancelAnimationFrame(rotateRafRef.current);
@@ -208,7 +213,7 @@ export default function Tier1Gait3DPanel({
   }, [isAutoRotate]);
 
   useEffect(() => {
-    if (!isPlaying || totalFrames === 0) {
+    if (!isPlaying || totalFrames === 0 || syncLocked) {
       if (playIntervalRef.current !== null) {
         window.clearInterval(playIntervalRef.current);
         playIntervalRef.current = null;
@@ -218,11 +223,10 @@ export default function Tier1Gait3DPanel({
 
     const tickMs = Math.round(1000 / fps);
     playIntervalRef.current = window.setInterval(() => {
-      setFrameIndex((prev) => {
-        const next = (prev + 1) % totalFrames;
-        onFrameSelect?.(next);
-        return next;
-      });
+      const next = (frameIndexRef.current + 1) % totalFrames;
+      frameIndexRef.current = next;
+      setFrameIndex(next);
+      onFrameSelect?.(next);
     }, tickMs);
 
     return () => {
@@ -231,7 +235,7 @@ export default function Tier1Gait3DPanel({
         playIntervalRef.current = null;
       }
     };
-  }, [fps, isPlaying, onFrameSelect, totalFrames]);
+  }, [fps, isPlaying, onFrameSelect, syncLocked, totalFrames]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -481,6 +485,7 @@ export default function Tier1Gait3DPanel({
                 value={desiredFrameIndex}
                 onChange={(event) => {
                   const next = Number(event.target.value);
+                  frameIndexRef.current = next;
                   setFrameIndex(next);
                   onFrameSelect?.(next);
                 }}

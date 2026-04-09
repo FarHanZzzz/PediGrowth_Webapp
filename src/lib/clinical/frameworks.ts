@@ -702,3 +702,445 @@ export function computeMotorDelayAssessment(
     summaryNote,
   };
 }
+
+
+// ============================================================
+// PRECHTL GENERAL MOVEMENTS ASSESSMENT (GMA)
+// ============================================================
+// Source: Prechtl HFR — "General Movement Assessment" (1997)
+//         Gao et al., Nature Communications (2023) PMC10721621
+//         General Movements Trust — clinical training programme
+//
+// GMA is a standardised, video-based assessment of spontaneous
+// infant movement quality. It is the most sensitive early
+// predictor of cerebral palsy and neurological impairment.
+//
+// AGE SCOPE:
+//   Writhing phase  — Birth to ~9 weeks corrected age
+//   Fidgety phase   — 9 to 20 weeks corrected age
+//   Not applicable  — Outside 0–20 weeks corrected age
+//
+// IMPORTANT: This module provides a STRUCTURED OBSERVATION
+// CHECKLIST for parents and a CLINICAL SUMMARY CARD for
+// clinicians. Only a GMA-Trust-certified assessor can perform
+// a formal GMA. These tools are screening support ONLY.
+// ============================================================
+
+// ── Core GMA Types ─────────────────────────────────────────
+
+export type GMAPhase = 'writhing' | 'fidgety' | 'not_applicable';
+
+export type WrithingClassification =
+  | 'normal'
+  | 'poor_repertoire'
+  | 'cramped_synchronized'
+  | 'chaotic';
+
+export type FidgetyClassification = 'present' | 'absent' | 'abnormal';
+
+export type GMARiskFlag = 'none' | 'watch' | 'urgent';
+
+// ── Observable Signs ───────────────────────────────────────
+
+export interface GMAObservationSign {
+  id: string;
+  label: string;
+  observationTip: string;
+  presentIndicates: 'normal' | 'concern';
+  phase: GMAPhase;
+  riskWeight: 1 | 2 | 3;
+}
+
+export const GMA_WRITHING_SIGNS: GMAObservationSign[] = [
+  {
+    id: 'wr-n-1',
+    label: 'Movements flow smoothly from one body part to another',
+    observationTip: 'Watch for smooth, continuous transitions — the movement is never abruptly cut off.',
+    presentIndicates: 'normal',
+    phase: 'writhing',
+    riskWeight: 2,
+  },
+  {
+    id: 'wr-n-2',
+    label: 'Speed and direction seem to change continuously throughout',
+    observationTip: 'Healthy writhing has ever-changing speed — not steady or mechanical.',
+    presentIndicates: 'normal',
+    phase: 'writhing',
+    riskWeight: 2,
+  },
+  {
+    id: 'wr-n-3',
+    label: 'Both sides of the body are involved (not just one arm or leg)',
+    observationTip: 'Watch for movement of all four limbs, head, and trunk during the observation window.',
+    presentIndicates: 'normal',
+    phase: 'writhing',
+    riskWeight: 1,
+  },
+  {
+    id: 'wr-n-4',
+    label: 'Movement patterns look varied — not the same sequence repeated',
+    observationTip: 'Normal writhing has rich variety. If you notice the baby always moves the same way, note it.',
+    presentIndicates: 'normal',
+    phase: 'writhing',
+    riskWeight: 2,
+  },
+  {
+    id: 'wr-n-5',
+    label: 'Baby appears relaxed during spontaneous movement (not stiff)',
+    observationTip: 'Limbs should not look rigid or locked together. There should be a soft, fluid quality.',
+    presentIndicates: 'normal',
+    phase: 'writhing',
+    riskWeight: 1,
+  },
+  {
+    id: 'wr-c-1',
+    label: 'Arms and legs seem to stiffen and relax at exactly the same time',
+    observationTip: 'This "cramped-synchronized" pattern looks mechanical — like all limbs are controlled by a single switch.',
+    presentIndicates: 'concern',
+    phase: 'writhing',
+    riskWeight: 3,
+  },
+  {
+    id: 'wr-c-2',
+    label: 'Movements look very jerky, large, and fast (not smooth)',
+    observationTip: 'Chaotic movements are abrupt, wide-ranging, and tremulous — unlike the flowing quality of normal writhing.',
+    presentIndicates: 'concern',
+    phase: 'writhing',
+    riskWeight: 2,
+  },
+  {
+    id: 'wr-c-3',
+    label: 'Baby seems to repeat the same movement over and over (monotonous)',
+    observationTip: 'Poor repertoire writhing lacks variety — the same limited pattern repeats throughout the recording.',
+    presentIndicates: 'concern',
+    phase: 'writhing',
+    riskWeight: 2,
+  },
+  {
+    id: 'wr-c-4',
+    label: 'Very little or no movement when baby is clearly awake',
+    observationTip: 'During a calm awake state, healthy writhing-age infants are actively moving. Prolonged stillness is a concern.',
+    presentIndicates: 'concern',
+    phase: 'writhing',
+    riskWeight: 2,
+  },
+];
+
+export const GMA_FIDGETY_SIGNS: GMAObservationSign[] = [
+  {
+    id: 'fm-n-1',
+    label: 'Small wriggling movements of the neck observed',
+    observationTip: 'Fidgety movements are tiny — look for gentle, small head/neck oscillations, not large turns.',
+    presentIndicates: 'normal',
+    phase: 'fidgety',
+    riskWeight: 2,
+  },
+  {
+    id: 'fm-n-2',
+    label: 'Small oscillating movements of the trunk visible',
+    observationTip: 'The torso seems to make subtle continuous micro-adjustments throughout the observation.',
+    presentIndicates: 'normal',
+    phase: 'fidgety',
+    riskWeight: 2,
+  },
+  {
+    id: 'fm-n-3',
+    label: 'Arms make small spontaneous movements in different directions',
+    observationTip: 'Arms move in varied, small arcs — not repetitive or stereotyped sweeps.',
+    presentIndicates: 'normal',
+    phase: 'fidgety',
+    riskWeight: 2,
+  },
+  {
+    id: 'fm-n-4',
+    label: 'Legs make small spontaneous movements in different directions',
+    observationTip: 'Legs show varied small kicks and extensions — not the same pedalling pattern each time.',
+    presentIndicates: 'normal',
+    phase: 'fidgety',
+    riskWeight: 2,
+  },
+  {
+    id: 'fm-n-5',
+    label: 'Movements continue throughout the entire observation window (not just briefly)',
+    observationTip: 'Fidgety movements are continuous during the awake state — not just a single brief burst.',
+    presentIndicates: 'normal',
+    phase: 'fidgety',
+    riskWeight: 1,
+  },
+  {
+    id: 'fm-c-1',
+    label: 'No small oscillating movements observed — baby appears very still when awake',
+    observationTip: 'Absent fidgety movements (F−) is the strongest single risk signal. A calm, awake infant at this age should clearly show small continuous movements.',
+    presentIndicates: 'concern',
+    phase: 'fidgety',
+    riskWeight: 3,
+  },
+  {
+    id: 'fm-c-2',
+    label: 'Movements are unusually large and forceful — not small and oscillating',
+    observationTip: 'Abnormal fidgety (AF) movements look exaggerated — wide amplitude, fast, jerky.',
+    presentIndicates: 'concern',
+    phase: 'fidgety',
+    riskWeight: 2,
+  },
+  {
+    id: 'fm-c-3',
+    label: 'Baby appears stiff or rigid during movement',
+    observationTip: 'Limbs that move but look locked or rigid suggest abnormal muscle tone.',
+    presentIndicates: 'concern',
+    phase: 'fidgety',
+    riskWeight: 2,
+  },
+  {
+    id: 'fm-c-4',
+    label: 'Only one side of the body seems to move (the other side appears still)',
+    observationTip: 'Asymmetric movement at this age may indicate unilateral neurological involvement.',
+    presentIndicates: 'concern',
+    phase: 'fidgety',
+    riskWeight: 2,
+  },
+];
+
+// ── GMA Recording Protocol ─────────────────────────────────
+
+export interface GMARecordingGuidance {
+  title: string;
+  steps: string[];
+  warnings: string[];
+}
+
+export const GMA_RECORDING_PROTOCOL: GMARecordingGuidance = {
+  title: 'How to Record for General Movements Assessment',
+  steps: [
+    'Place your baby on their back (supine) on a flat, comfortable surface — a smooth mat or firm bed is ideal.',
+    'Choose a time when your baby is calm, awake, and alert — not just fed, not hungry, not crying.',
+    'Dress your baby lightly — a nappy/diaper only is best. Clothing can hide movement detail.',
+    'Keep the room quiet. Switch off the TV, radio, or music — external stimulation disrupts natural movement.',
+    'Do not use toys, pacifiers, or talking during the recording — observe natural spontaneous movement.',
+    'Record for at least 3–5 minutes. The longer the better for confident assessment.',
+    'Film from above or slightly to the side so the whole body is visible at all times.',
+    'Hold the camera steady — a tripod or propped phone gives better results than handheld.',
+  ],
+  warnings: [
+    'Do not film while the baby is crying, fussy, or just waking — this alters movement patterns.',
+    'Do not use toys or distraction — we need to observe spontaneous, undirected movement.',
+    'Preterm babies: use corrected age (weeks since due date), not chronological age.',
+  ],
+};
+
+// ── GMA Screening Data Structures ─────────────────────────
+
+export interface GMAScreeningInput {
+  correctedAgeWeeks: number;
+  gestationalAgeAtBirth?: number;
+  observedSignIds: Set<string>;
+  clinicianClassification?: WrithingClassification | FidgetyClassification | null;
+  observationConditionsMet: boolean;
+}
+
+export interface GMAScreeningResult {
+  phase: GMAPhase;
+  correctedAgeWeeks: number;
+  observedNormalSignCount: number;
+  observedConcernSignCount: number;
+  weightedConcernScore: number;
+  totalSignsChecked: number;
+  observationConditionsMet: boolean;
+  clinicianClassification: WrithingClassification | FidgetyClassification | null;
+  riskFlag: GMARiskFlag;
+  summaryNote: string;
+  clinicalDisclaimer: string;
+  referenceNote: string;
+}
+
+// ── GMA Label Maps ─────────────────────────────────────────
+
+export const WRITHING_CLASSIFICATION_LABELS: Record<WrithingClassification, string> = {
+  normal: 'Normal Writhing',
+  poor_repertoire: 'Poor Repertoire (PR)',
+  cramped_synchronized: 'Cramped-Synchronized (CS)',
+  chaotic: 'Chaotic (Ch)',
+};
+
+export const WRITHING_CLASSIFICATION_DESCRIPTIONS: Record<WrithingClassification, string> = {
+  normal: 'Movements show normal variability, fluency, and complexity. No concerning pattern identified.',
+  poor_repertoire: 'Movements appear monotonous and stereotyped. Lacks the variability and complexity expected. Monitor closely.',
+  cramped_synchronized: 'Limb and trunk muscles appear to contract and relax simultaneously — rigid, lacking fluidity. Strongest predictor of spastic cerebral palsy.',
+  chaotic: 'Movements are abrupt, large, and fast without any order — tremulous pattern. Rare finding; warrants urgent evaluation.',
+};
+
+export const FIDGETY_CLASSIFICATION_LABELS: Record<FidgetyClassification, string> = {
+  present: 'Fidgety Movements Present (F+)',
+  absent: 'Fidgety Movements Absent (F\u2212)',
+  abnormal: 'Abnormal Fidgety Movements (AF)',
+};
+
+export const FIDGETY_CLASSIFICATION_DESCRIPTIONS: Record<FidgetyClassification, string> = {
+  present: 'Small oscillating movements of neck, trunk, and limbs in all directions are clearly present. This is the strongest predictor of normal motor outcome at this age.',
+  absent: 'No fidgety movements identifiable during the observation window. This is the primary risk signal in the Gao et al. (2023) validated model (AUC 0.967). Urgent specialist referral is recommended.',
+  abnormal: 'Fidgety movements are present but show exaggerated amplitude, speed, and jerkiness. A risk signal requiring clinical follow-up.',
+};
+
+export const WRITHING_CLASSIFICATION_RISK: Record<WrithingClassification, GMARiskFlag> = {
+  normal: 'none',
+  poor_repertoire: 'watch',
+  cramped_synchronized: 'urgent',
+  chaotic: 'urgent',
+};
+
+export const FIDGETY_CLASSIFICATION_RISK: Record<FidgetyClassification, GMARiskFlag> = {
+  present: 'none',
+  abnormal: 'watch',
+  absent: 'urgent',
+};
+
+export const GMA_RISK_LABELS: Record<GMARiskFlag, string> = {
+  none: 'No concern identified',
+  watch: 'Monitor closely',
+  urgent: 'Specialist referral recommended',
+};
+
+export const GMA_RISK_BADGE_STYLES: Record<GMARiskFlag, string> = {
+  none: 'border-emerald-300 bg-emerald-50 text-emerald-800',
+  watch: 'border-amber-300 bg-amber-50 text-amber-900',
+  urgent: 'border-red-300 bg-red-50 text-red-900',
+};
+
+// ── Helper Functions ───────────────────────────────────────
+
+export function getGMAPhase(correctedAgeWeeks: number): GMAPhase {
+  if (correctedAgeWeeks < 0 || correctedAgeWeeks > 20) return 'not_applicable';
+  if (correctedAgeWeeks <= 8) return 'writhing';
+  return 'fidgety';
+}
+
+export function isGMAApplicable(correctedAgeWeeks: number): boolean {
+  return getGMAPhase(correctedAgeWeeks) !== 'not_applicable';
+}
+
+export function isGMAApplicableByMonths(ageMonths: number): boolean {
+  return ageMonths <= 5;
+}
+
+export function getGMASignsForPhase(phase: GMAPhase): GMAObservationSign[] {
+  if (phase === 'writhing') return GMA_WRITHING_SIGNS;
+  if (phase === 'fidgety') return GMA_FIDGETY_SIGNS;
+  return [];
+}
+
+export function computeGMAScreeningResult(input: GMAScreeningInput): GMAScreeningResult {
+  const phase = getGMAPhase(input.correctedAgeWeeks);
+
+  const disclaimer =
+    'This checklist structures observations for your clinician. ' +
+    'Only a General Movements Trust-certified assessor can perform a formal GMA. ' +
+    'This tool is a screening support aid, not a diagnostic substitute.';
+
+  const referenceNote =
+    'Prechtl HFR (1997). General Movement Assessment. ' +
+    'Gao et al. (2023) Automating infant motor assessment. Nature Communications PMC10721621. ' +
+    'Automated GMA AUC: 0.967 (external validation).';
+
+  if (phase === 'not_applicable') {
+    return {
+      phase,
+      correctedAgeWeeks: input.correctedAgeWeeks,
+      observedNormalSignCount: 0,
+      observedConcernSignCount: 0,
+      weightedConcernScore: 0,
+      totalSignsChecked: 0,
+      observationConditionsMet: input.observationConditionsMet,
+      clinicianClassification: input.clinicianClassification ?? null,
+      riskFlag: 'none',
+      summaryNote:
+        'General Movements Assessment is not applicable for this corrected age. GMA applies to infants 0–20 weeks corrected age. The child is in the intentional motor phase.',
+      clinicalDisclaimer: disclaimer,
+      referenceNote,
+    };
+  }
+
+  const signs = getGMASignsForPhase(phase);
+  const observed = input.observedSignIds;
+
+  let normalCount = 0;
+  let concernCount = 0;
+  let weightedConcernScore = 0;
+
+  for (const sign of signs) {
+    const isObserved = observed.has(sign.id);
+    if (isObserved && sign.presentIndicates === 'normal') {
+      normalCount += 1;
+    } else if (isObserved && sign.presentIndicates === 'concern') {
+      concernCount += 1;
+      weightedConcernScore += sign.riskWeight;
+    }
+  }
+
+  let riskFlag: GMARiskFlag;
+
+  if (input.clinicianClassification) {
+    if (phase === 'writhing') {
+      riskFlag =
+        WRITHING_CLASSIFICATION_RISK[
+          input.clinicianClassification as WrithingClassification
+        ] ?? 'watch';
+    } else {
+      riskFlag =
+        FIDGETY_CLASSIFICATION_RISK[
+          input.clinicianClassification as FidgetyClassification
+        ] ?? 'watch';
+    }
+  } else {
+    if (phase === 'fidgety' && observed.has('fm-c-1')) {
+      riskFlag = 'urgent';
+    } else if (weightedConcernScore >= 4) {
+      riskFlag = 'urgent';
+    } else if (weightedConcernScore >= 2 || concernCount >= 1) {
+      riskFlag = 'watch';
+    } else if (normalCount === 0) {
+      riskFlag = 'watch';
+    } else {
+      riskFlag = 'none';
+    }
+
+    if (!input.observationConditionsMet && riskFlag === 'urgent') {
+      riskFlag = 'watch';
+    }
+  }
+
+  const phaseLabel =
+    phase === 'writhing' ? 'Writhing Movement' : 'Fidgety Movement';
+  let summaryNote = '';
+
+  if (riskFlag === 'urgent') {
+    summaryNote = `${phaseLabel} phase concern signs observed. The pattern reported requires prompt clinical review. ${
+      phase === 'fidgety' && observed.has('fm-c-1')
+        ? 'Absence of fidgety movements is the primary risk signal identified in validated automated GMA research (Gao et al., 2023, AUC 0.967).'
+        : 'Specialist assessment is recommended.'
+    } Please refer to a GMA-certified assessor.`;
+  } else if (riskFlag === 'watch') {
+    summaryNote = `${phaseLabel} phase: ${concernCount} observational concern indicator(s) noted alongside ${normalCount} normal indicator(s). Monitor at next review. Discuss findings with your paediatrician.`;
+  } else {
+    summaryNote = `${phaseLabel} phase: Parent-reported observations are consistent with expected normal movement patterns for ${input.correctedAgeWeeks} weeks corrected age. Continue routine monitoring.`;
+  }
+
+  if (!input.observationConditionsMet) {
+    summaryNote +=
+      ' Note: recording conditions may not have been fully met — results should be interpreted with caution.';
+  }
+
+  return {
+    phase,
+    correctedAgeWeeks: input.correctedAgeWeeks,
+    observedNormalSignCount: normalCount,
+    observedConcernSignCount: concernCount,
+    weightedConcernScore,
+    totalSignsChecked: signs.length,
+    observationConditionsMet: input.observationConditionsMet,
+    clinicianClassification: input.clinicianClassification ?? null,
+    riskFlag,
+    summaryNote,
+    clinicalDisclaimer: disclaimer,
+    referenceNote,
+  };
+}

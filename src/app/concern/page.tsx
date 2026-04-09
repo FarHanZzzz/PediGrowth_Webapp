@@ -16,8 +16,8 @@
 
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Heart,
   AlertTriangle,
@@ -40,7 +40,9 @@ import { Badge } from "@/components/ui/badge";
 import { FOLLOWUP_BADGE_STYLES, FOLLOWUP_CALLOUT_STYLES } from "@/lib/presentation/severity";
 import {
   readSession,
+  readResultRaw,
   readSessionRaw,
+  writeResult,
   writeSession,
 } from "@/lib/session/sessionStorage";
 import {
@@ -74,35 +76,131 @@ interface IntakeSession {
   consentTimestamp?: string;
 }
 
-export default function ConcernPage() {
-  const router = useRouter();
+interface SupplementalAssessmentMetadata {
+  source: "supplemental";
+  linkedResultId: string;
+  completedAt: string;
+}
 
-  // ── Session hydration ──────────────────────────────────────────────
-  const [childName, setChildName] = useState("your child");
-  const [childAge, setChildAge] = useState<number | null>(null);
+interface ClinicalAssessmentPayload {
+  redFlags: string[];
+  urgentRedFlagCount: number;
+  motorDelayAssessment: ReturnType<typeof computeMotorDelayAssessment> | null;
+  aimsCompleted: boolean;
+  assessedAt: string;
+  supplementalMetadata?: SupplementalAssessmentMetadata;
+}
+
+interface LinkedResultSnapshot {
+  session?: {
+    nickname?: string;
+    ageMonths?: number;
+  };
+  clinicalAssessment?: unknown;
+}
+
+interface ConcernHydrationContext {
+  childName: string;
+  childAge: number | null;
+  resolvedLinkedResultId: string | null;
+  supplementalFallbackNotice: string | null;
+  seedSession: { nickname: string; ageMonths: number | null } | null;
+  shouldRedirect: boolean;
+}
+
+function ConcernPageContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedLinkedResultId = searchParams.get("resultId");
+  const requestedSupplementalFlow = searchParams.get("mode") === "supplemental";
+
+  const hydrationContext = useMemo<ConcernHydrationContext>(() => {
+    let childName = "your child";
+    let childAge: number | null = null;
+    let resolvedLinkedResultId: string | null = null;
+    let supplementalFallbackNotice: string | null = null;
+    let seedSession: { nickname: string; ageMonths: number | null } | null = null;
+    let hydratedFromSession = false;
+
+    const rawSession = readSessionRaw();
+    if (rawSession) {
+      try {
+        const parsed = JSON.parse(rawSession) as IntakeSession;
+        childName = parsed.nickname || "your child";
+        childAge = typeof parsed.ageMonths === "number" ? parsed.ageMonths : null;
+        hydratedFromSession = true;
+      } catch {
+        hydratedFromSession = false;
+      }
+    }
+
+    if (requestedSupplementalFlow && requestedLinkedResultId) {
+      const linkedRaw = readResultRaw(requestedLinkedResultId);
+      if (linkedRaw) {
+        try {
+          const linked = JSON.parse(linkedRaw) as LinkedResultSnapshot;
+          resolvedLinkedResultId = requestedLinkedResultId;
+
+          if (!hydratedFromSession) {
+            childName = linked.session?.nickname || "your child";
+            childAge =
+              typeof linked.session?.ageMonths === "number" ? linked.session.ageMonths : null;
+            hydratedFromSession = true;
+            seedSession = {
+              nickname: childName,
+              ageMonths: childAge,
+            };
+          }
+        } catch {
+          supplementalFallbackNotice =
+            "We could not load the linked gait result. Continuing in standard concern mode.";
+        }
+      } else {
+        supplementalFallbackNotice =
+          "The linked gait result is no longer available. Continuing in standard concern mode.";
+      }
+    } else if (requestedSupplementalFlow) {
+      supplementalFallbackNotice =
+        "Supplemental mode was requested without a linked result. Continuing in standard concern mode.";
+    }
+
+    return {
+      childName,
+      childAge,
+      resolvedLinkedResultId,
+      supplementalFallbackNotice,
+      seedSession,
+      shouldRedirect: !hydratedFromSession,
+    };
+  }, [requestedLinkedResultId, requestedSupplementalFlow]);
+
+  const {
+    childName,
+    childAge,
+    resolvedLinkedResultId,
+    supplementalFallbackNotice,
+    seedSession,
+    shouldRedirect,
+  } = hydrationContext;
+  const isSupplementalFlow = requestedSupplementalFlow && Boolean(resolvedLinkedResultId);
+
+  useEffect(() => {
+    if (seedSession) {
+      writeSession(seedSession);
+    }
+  }, [seedSession]);
+
+  useEffect(() => {
+    if (shouldRedirect) {
+      router.replace("/start");
+    }
+  }, [router, shouldRedirect]);
+
   const [flags, setFlags] = useState<Record<string, boolean>>({});
   const [milestoneChecks, setMilestoneChecks] = useState<Record<string, boolean>>({});
   const [aimsChecks, setAimsChecks] = useState<Record<string, boolean>>({});
-
-  useEffect(() => {
-    const raw = readSessionRaw();
-    if (!raw) {
-      router.replace("/start");
-      return;
-    }
-
-    try {
-      const parsed = JSON.parse(raw) as IntakeSession;
-      writeSession(parsed);
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time intake hydration after mount.
-      setChildName(parsed.nickname || "your child");
-      if (typeof parsed.ageMonths === "number") {
-        setChildAge(parsed.ageMonths);
-      }
-    } catch {
-      // Ignore malformed legacy payloads and let downstream guards handle them.
-    }
-  }, [router]);
+  const [runtimeSupplementalNotice, setRuntimeSupplementalNotice] = useState<string | null>(null);
+  const displayedSupplementalNotice = runtimeSupplementalNotice ?? supplementalFallbackNotice;
 
   // ── Derived milestone data ─────────────────────────────────────────
   const milestoneBands: MilestoneBand[] = useMemo(() => {
@@ -141,20 +239,65 @@ export default function ConcernPage() {
 
   // ── Persist clinical data to session for clinician handoff ─────────
   function handleSaveAndPrint() {
-    // Save the motor delay assessment data to session for the clinician page
+    // Save the motor delay assessment data to session for results + clinician page.
+    const assessedAt = new Date().toISOString();
+    const supplementalMetadata =
+      isSupplementalFlow && resolvedLinkedResultId
+        ? {
+            source: "supplemental" as const,
+            linkedResultId: resolvedLinkedResultId,
+            completedAt: assessedAt,
+          }
+        : undefined;
+    const clinicalAssessmentPayload: ClinicalAssessmentPayload = {
+      redFlags: Object.entries(flags)
+        .filter(([, v]) => v)
+        .map(([k]) => RED_FLAGS.find((rf) => rf.id === k)?.label ?? k),
+      urgentRedFlagCount: urgentCount,
+      motorDelayAssessment: motorAssessment,
+      aimsCompleted: showAIMS,
+      assessedAt,
+      ...(supplementalMetadata ? { supplementalMetadata } : {}),
+    };
+
     const existing = readSession<IntakeSession>() ?? {};
     writeSession({
       ...existing,
-      clinicalAssessment: {
-        redFlags: Object.entries(flags)
-          .filter(([, v]) => v)
-          .map(([k]) => RED_FLAGS.find((rf) => rf.id === k)?.label ?? k),
-        urgentRedFlagCount: urgentCount,
-        motorDelayAssessment: motorAssessment,
-        aimsCompleted: showAIMS,
-        assessedAt: new Date().toISOString(),
-      },
+      clinicalAssessment: clinicalAssessmentPayload,
     });
+
+    if (resolvedLinkedResultId) {
+      const linkedRaw = readResultRaw(resolvedLinkedResultId);
+      if (linkedRaw) {
+        try {
+          const linked = JSON.parse(linkedRaw) as LinkedResultSnapshot & Record<string, unknown>;
+          const linkedSession =
+            linked.session && typeof linked.session === "object"
+              ? (linked.session as Record<string, unknown>)
+              : {};
+
+          const updated = {
+            ...linked,
+            session: {
+              ...linkedSession,
+              clinicalAssessment: clinicalAssessmentPayload,
+            },
+            clinicalAssessment: clinicalAssessmentPayload,
+          };
+          writeResult(resolvedLinkedResultId, updated);
+        } catch {
+          // Keep session-level persistence even if linked result payload is malformed.
+        }
+
+        router.push(`/results/${resolvedLinkedResultId}`);
+        return;
+      }
+
+      setRuntimeSupplementalNotice(
+        "Motor summary was saved locally, but the linked result could not be reopened. You can still print this summary.",
+      );
+    }
+
     window.print();
   }
 
@@ -167,11 +310,12 @@ export default function ConcernPage() {
             <Heart className="h-6 w-6 text-route-a" />
           </div>
           <h1 data-display="true" className="text-3xl font-semibold text-foreground">
-            Concern Navigator
+            {isSupplementalFlow ? "Motor Development Check" : "Concern Navigator"}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Since {childName} isn&apos;t walking independently yet, we&apos;ll
-            help you organize your observations for a professional conversation.
+            {isSupplementalFlow
+              ? `This optional screen adds milestone context to ${childName}'s gait result for a stronger parent and clinician handoff.`
+              : `Since ${childName} isn&apos;t walking independently yet, we&apos;ll help you organize your observations for a professional conversation.`}
           </p>
           {childAge !== null && (
             <Badge variant="outline" className="mt-2 text-[11px]">
@@ -183,12 +327,26 @@ export default function ConcernPage() {
         {/* ── Why no gait analysis (preserved) ────────────────────── */}
         <Card className="mb-4 bg-surface-container-low">
           <CardContent className="p-4 text-xs text-muted-foreground">
-            <p>
-              Gait analysis requires independent walking. When {childName}{" "}
-              starts walking, you can come back for a full gait assessment.
-            </p>
+            {isSupplementalFlow ? (
+              <p>
+                This motor screen is a structured parent-observation add-on. It complements gait analysis by adding developmental context.
+              </p>
+            ) : (
+              <p>
+                Gait analysis requires independent walking. When {childName}{" "}
+                starts walking, you can come back for a full gait assessment.
+              </p>
+            )}
           </CardContent>
         </Card>
+
+        {displayedSupplementalNotice && (
+          <Card className="mb-4 border-amber-300 bg-amber-50/70">
+            <CardContent className="p-4 text-xs text-amber-900">
+              {displayedSupplementalNotice}
+            </CardContent>
+          </Card>
+        )}
 
         {/* ────────────────────────────────────────────────────────── */}
         {/* NEW: Age-Normed Motor Milestone Assessment                */}
@@ -584,27 +742,63 @@ export default function ConcernPage() {
               onClick={handleSaveAndPrint}
             >
               <Printer className="h-4 w-4" />
-              Save & Print Summary (PDF)
+              {isSupplementalFlow ? "Save motor summary to this result" : "Save & Print Summary (PDF)"}
             </Button>
           )}
-          <Button
-            variant="secondary"
-            className="w-full text-sm font-medium"
-            onClick={() => router.push("/start")}
-          >
-            Wait, my child is walking (Edit answers)
-          </Button>
+          {isSupplementalFlow ? (
+            <Button
+              variant="secondary"
+              className="w-full text-sm font-medium"
+              onClick={() =>
+                resolvedLinkedResultId ? router.push(`/results/${resolvedLinkedResultId}`) : router.push("/start")
+              }
+            >
+              Back to result (skip for now)
+            </Button>
+          ) : (
+            <Button
+              variant="secondary"
+              className="w-full text-sm font-medium"
+              onClick={() => router.push("/start")}
+            >
+              Wait, my child is walking (Edit answers)
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="sm"
             className="w-full text-xs text-muted-foreground"
-            onClick={() => router.push("/")}
+            onClick={() =>
+              router.push(isSupplementalFlow && resolvedLinkedResultId ? `/results/${resolvedLinkedResultId}` : "/")
+            }
           >
             <ArrowLeft className="h-3 w-3 mr-1" />
-            Finish & return home
+            {isSupplementalFlow ? "Return to results" : "Finish & return home"}
           </Button>
         </div>
       </div>
     </div>
+  );
+}
+
+function ConcernPageFallback() {
+  return (
+    <div className="px-4 py-6 sm:px-6">
+      <div className="mx-auto max-w-4xl">
+        <Card className="bg-surface-container-low">
+          <CardContent className="p-4 text-sm text-muted-foreground">
+            Loading concern workflow...
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+export default function ConcernPage() {
+  return (
+    <Suspense fallback={<ConcernPageFallback />}>
+      <ConcernPageContent />
+    </Suspense>
   );
 }

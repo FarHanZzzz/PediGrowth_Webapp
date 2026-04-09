@@ -33,6 +33,8 @@ interface HistoryRow {
   analyzedAt: string | null;
   concernLevel: string;
   confidenceNote: string;
+  reportSummary: string | null;
+  nextStep: string | null;
   status: HistoryStatus;
   qualityResult: string;
   routeLabel: string;
@@ -43,6 +45,12 @@ interface ParsedResultSummary {
   assessmentMode?: string;
   quality?: { result?: string; confidenceNotes?: string };
   concerns?: { overallLevel?: string; viewLabel?: string };
+  reports?: {
+    caregiver?: {
+      observationsText?: string;
+      monitoringGuidance?: string;
+    };
+  };
   trace?: { pipeline?: { direction?: string } };
   session?: { nickname?: string; ageMonths?: number };
   analyzedAt?: string;
@@ -98,6 +106,14 @@ function buildRowsFromSessionStorage(): HistoryRow[] {
         analyzedAt,
         concernLevel: String(result?.concerns?.overallLevel ?? "none"),
         confidenceNote: String(result?.quality?.confidenceNotes ?? "No confidence note available."),
+        reportSummary:
+          typeof result?.reports?.caregiver?.observationsText === "string"
+            ? result.reports.caregiver.observationsText
+            : null,
+        nextStep:
+          typeof result?.reports?.caregiver?.monitoringGuidance === "string"
+            ? result.reports.caregiver.monitoringGuidance
+            : null,
         status: deriveStatus(result),
         qualityResult: String(result?.quality?.result ?? "unknown"),
         routeLabel,
@@ -186,7 +202,7 @@ export default function HistoryPage() {
             </p>
             <h1 className="medical-title text-3xl font-semibold text-foreground">Assessment History</h1>
             <p className="text-sm text-muted-foreground">
-              Review previous runs, reopen evidence, and continue with follow-up workflows.
+              Parent dashboard (local session): review previous runs, next steps, and reopen evidence quickly.
             </p>
           </div>
 
@@ -279,6 +295,7 @@ export default function HistoryPage() {
                     <th className="px-4 py-3 font-semibold">Child</th>
                     <th className="px-4 py-3 font-semibold">Captured</th>
                     <th className="px-4 py-3 font-semibold">Observation</th>
+                    <th className="px-4 py-3 font-semibold">Next Step</th>
                     <th className="px-4 py-3 font-semibold">Status</th>
                     <th className="px-4 py-3 font-semibold">Quality</th>
                     <th className="px-4 py-3 font-semibold">Action</th>
@@ -302,8 +319,16 @@ export default function HistoryPage() {
                           {row.analyzedAt ? new Date(row.analyzedAt).toLocaleString() : "Timestamp unavailable"}
                         </td>
                         <td className="px-4 py-3 align-top">
-                          <p className="text-xs font-medium text-foreground">{humanConcern(row.concernLevel)}</p>
-                          <p className="mt-1 text-[11px] text-muted-foreground">{row.routeLabel}</p>
+                          <p className="text-sm font-semibold text-foreground">{humanConcern(row.concernLevel)}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">{row.routeLabel}</p>
+                          {row.reportSummary && (
+                            <p className="mt-1 text-xs text-foreground/80">{row.reportSummary}</p>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 align-top">
+                          <p className="max-w-xs text-xs text-foreground/80">
+                            {row.nextStep ?? "Open result to generate or review caregiver next-step guidance."}
+                          </p>
                         </td>
                         <td className="px-4 py-3 align-top">
                           <Badge variant="outline" className={`gap-1.5 text-[10px] ${meta.className}`}>

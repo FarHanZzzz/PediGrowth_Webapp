@@ -64,6 +64,26 @@ interface AssistantPayload {
   filterReason: string | null;
 }
 
+type OrchestrationStage =
+  | 'evidence_normalization'
+  | 'policy_risk_checks'
+  | 'model_synthesis'
+  | 'language_safety';
+
+interface StageTraceEntry {
+  stage: OrchestrationStage;
+  strategy: 'deterministic' | 'llm' | 'fallback';
+  status: 'passed' | 'triggered' | 'skipped';
+  detail: string;
+}
+
+interface OrchestrationMeta {
+  version: string;
+  confidenceGateTriggered: boolean;
+  fallbackReason: string | null;
+  stageTrace: StageTraceEntry[];
+}
+
 interface KnowledgeCard {
   id: string;
   title: string;
@@ -74,6 +94,7 @@ interface KnowledgeCard {
 type AdminClient = ReturnType<typeof createAdminSupabaseClient>;
 
 const POLICY_VERSION = process.env.NEXT_PUBLIC_POLICY_VERSION ?? '0.1.0';
+const NAVIGATOR_ORCHESTRATION_VERSION = '2026-04-09.v1';
 const MAX_PROMPT_CHARS = 1400;
 const MAX_HISTORY_MESSAGES = 10;
 const UUID_PATTERN =
@@ -575,6 +596,32 @@ function sanitizeAssistantPayload(payload: AssistantPayload): AssistantPayload {
   };
 }
 
+function evaluateConfidenceFallbackReason(
+  context: NavigatorContext,
+  metrics: Record<string, number>
+): string | null {
+  const quality = (context.quality_result ?? '').trim().toLowerCase();
+  const hasMetricEvidence = Object.keys(metrics).length > 0;
+  const hasContextEvidence =
+    Boolean(context.summary) ||
+    (context.assessed_domains?.length ?? 0) > 0 ||
+    (context.issue_hotspots?.length ?? 0) > 0;
+
+  if (quality === 'fail' || quality === 'cannot_assess') {
+    return 'quality_result_low_confidence';
+  }
+
+  if (quality === 'borderline' && !hasMetricEvidence) {
+    return 'borderline_quality_without_metric_snapshot';
+  }
+
+  if (!hasMetricEvidence && !hasContextEvidence) {
+    return 'insufficient_assessment_context';
+  }
+
+  return null;
+}
+
 async function getUserIdFromSession(): Promise<string | null> {
   try {
     const supabase = await createServerSupabaseClient();
@@ -648,7 +695,8 @@ async function persistConversation(
   userPrompt: string,
   assistant: AssistantPayload,
   mode: Mode,
-  persistedThread: boolean
+  persistedThread: boolean,
+  orchestration?: OrchestrationMeta
 ): Promise<void> {
   if (!admin || !userId || !persistedThread) {
     return;
@@ -674,6 +722,10 @@ async function persistConversation(
           action_items: assistant.actionItems,
           suggested_prompts: assistant.suggestedPrompts,
           citations: assistant.citations,
+          orchestration_version: orchestration?.version ?? NAVIGATOR_ORCHESTRATION_VERSION,
+          stage_trace: orchestration?.stageTrace ?? [],
+          confidence_gate_triggered: orchestration?.confidenceGateTriggered ?? false,
+          fallback_reason: orchestration?.fallbackReason ?? null,
         },
         policy_filtered: assistant.policyFiltered,
         filter_reason: assistant.filterReason,
@@ -691,6 +743,10 @@ async function persistConversation(
         mode,
         policyFiltered: assistant.policyFiltered,
         filterReason: assistant.filterReason,
+        orchestrationVersion: orchestration?.version ?? NAVIGATOR_ORCHESTRATION_VERSION,
+        confidenceGateTriggered: orchestration?.confidenceGateTriggered ?? false,
+        fallbackReason: orchestration?.fallbackReason ?? null,
+        stageTrace: orchestration?.stageTrace ?? [],
       },
       policy_version: POLICY_VERSION,
     });
@@ -708,6 +764,11 @@ function modeInstruction(mode: Mode): string {
 
 export async function POST(req: Request) {
   try {
+    const stageTrace: StageTraceEntry[] = [];
+    const traceStage = (entry: StageTraceEntry) => {
+      stageTrace.push(entry);
+    };
+
     const body = (await req.json()) as NavigatorChatRequest;
     const prompt = clampPrompt(safeText(body.prompt));
 
@@ -732,10 +793,36 @@ export async function POST(req: Request) {
       resultId
     );
 
+    traceStage({
+      stage: 'evidence_normalization',
+      strategy: 'deterministic',
+      status: 'passed',
+      detail: 'Request payload normalized to bounded context, metrics, and conversation windows.',
+    });
+
     const selectedCards = selectKnowledgeCards(prompt);
     const citations = selectedCards.map((card) => ({ id: card.id, title: card.title }));
     const refusal = refusalForPrompt(prompt);
     if (refusal) {
+      traceStage({
+        stage: 'policy_risk_checks',
+        strategy: 'deterministic',
+        status: 'triggered',
+        detail: `Policy refusal triggered: ${refusal.reason}.`,
+      });
+      traceStage({
+        stage: 'model_synthesis',
+        strategy: 'llm',
+        status: 'skipped',
+        detail: 'Skipped due to policy refusal template path.',
+      });
+      traceStage({
+        stage: 'language_safety',
+        strategy: 'deterministic',
+        status: 'passed',
+        detail: 'Refusal template returned with non-diagnostic safety framing.',
+      });
+
       const refusalPayload = sanitizeAssistantPayload({
         response: `${refusal.text} Would you like help preparing clinician questions based on this report?`,
         actionItems: [
@@ -753,7 +840,23 @@ export async function POST(req: Request) {
         filterReason: refusal.reason,
       });
 
-      await persistConversation(admin, userId, threadId, prompt, refusalPayload, mode, persisted);
+      const refusalOrchestration: OrchestrationMeta = {
+        version: NAVIGATOR_ORCHESTRATION_VERSION,
+        confidenceGateTriggered: true,
+        fallbackReason: refusal.reason,
+        stageTrace,
+      };
+
+      await persistConversation(
+        admin,
+        userId,
+        threadId,
+        prompt,
+        refusalPayload,
+        mode,
+        persisted,
+        refusalOrchestration
+      );
 
       return NextResponse.json({
         success: true,
@@ -766,8 +869,22 @@ export async function POST(req: Request) {
         source: refusalPayload.source,
         policy_filtered: refusalPayload.policyFiltered,
         filter_reason: refusalPayload.filterReason,
+        orchestration_version: refusalOrchestration.version,
+        confidence_gate_triggered: refusalOrchestration.confidenceGateTriggered,
+        fallback_reason: refusalOrchestration.fallbackReason,
+        stage_trace: refusalOrchestration.stageTrace,
       });
     }
+
+    const confidenceFallbackReason = evaluateConfidenceFallbackReason(context, metrics);
+    traceStage({
+      stage: 'policy_risk_checks',
+      strategy: 'deterministic',
+      status: confidenceFallbackReason ? 'triggered' : 'passed',
+      detail: confidenceFallbackReason
+        ? `Confidence gate triggered deterministic fallback: ${confidenceFallbackReason}.`
+        : 'No policy or confidence fallback required for synthesis.',
+    });
 
     const contextSnippet = buildContextSnippet(metrics, riskCategory, context);
     const knowledgeSnippet = selectedCards
@@ -776,7 +893,29 @@ export async function POST(req: Request) {
 
     let payload: AssistantPayload | null = null;
 
-    if (process.env.NODE_ENV === 'development' && process.env.MOCK_AI === 'true') {
+    if (confidenceFallbackReason) {
+      traceStage({
+        stage: 'model_synthesis',
+        strategy: 'fallback',
+        status: 'triggered',
+        detail: 'Deterministic heuristic fallback enforced by confidence gate.',
+      });
+      payload = buildHeuristicPayload(
+        `${prompt} (deterministic fallback: ${confidenceFallbackReason})`,
+        mode,
+        metrics,
+        riskCategory,
+        context,
+        citations,
+        'heuristic'
+      );
+    } else if (process.env.NODE_ENV === 'development' && process.env.MOCK_AI === 'true') {
+      traceStage({
+        stage: 'model_synthesis',
+        strategy: 'fallback',
+        status: 'triggered',
+        detail: 'Development MOCK_AI path selected for deterministic simulation.',
+      });
       payload = buildHeuristicPayload(
         prompt,
         mode,
@@ -787,6 +926,12 @@ export async function POST(req: Request) {
         'mock'
       );
     } else if (process.env.DASHSCOPE_API_KEY && process.env.DASHSCOPE_MODEL) {
+      traceStage({
+        stage: 'model_synthesis',
+        strategy: 'llm',
+        status: 'passed',
+        detail: 'Live LLM synthesis path selected with bounded context window.',
+      });
       const llmMessages: ProviderMessage[] = [
         ...conversation.map((msg) => ({ role: msg.role, content: msg.content })),
         {
@@ -830,6 +975,12 @@ export async function POST(req: Request) {
         };
       } catch (error) {
         if (error instanceof DashScopeError) {
+          traceStage({
+            stage: 'model_synthesis',
+            strategy: 'fallback',
+            status: 'triggered',
+            detail: `LLM unavailable (${error.code ?? 'UNKNOWN'}); switched to deterministic heuristic fallback.`,
+          });
           payload = buildHeuristicPayload(
             `${prompt} (live model unavailable: ${error.code ?? 'UNKNOWN'})`,
             mode,
@@ -844,6 +995,12 @@ export async function POST(req: Request) {
         }
       }
     } else {
+      traceStage({
+        stage: 'model_synthesis',
+        strategy: 'fallback',
+        status: 'triggered',
+        detail: 'No LLM credentials configured; deterministic heuristic fallback selected.',
+      });
       payload = buildHeuristicPayload(
         prompt,
         mode,
@@ -856,6 +1013,12 @@ export async function POST(req: Request) {
     }
 
     if (!payload) {
+      traceStage({
+        stage: 'model_synthesis',
+        strategy: 'fallback',
+        status: 'triggered',
+        detail: 'Safety net fallback applied because synthesis returned empty payload.',
+      });
       payload = buildHeuristicPayload(
         prompt,
         mode,
@@ -868,7 +1031,36 @@ export async function POST(req: Request) {
     }
 
     const safePayload = sanitizeAssistantPayload(payload);
-    await persistConversation(admin, userId, threadId, prompt, safePayload, mode, persisted);
+    traceStage({
+      stage: 'language_safety',
+      strategy: 'deterministic',
+      status: safePayload.policyFiltered ? 'triggered' : 'passed',
+      detail: safePayload.policyFiltered
+        ? `Language safety filter rewrote response: ${safePayload.filterReason ?? 'policy_guardrail'}.`
+        : 'Language safety checks passed without modifications.',
+    });
+
+    const orchestrationMeta: OrchestrationMeta = {
+      version: NAVIGATOR_ORCHESTRATION_VERSION,
+      confidenceGateTriggered: Boolean(confidenceFallbackReason),
+      fallbackReason:
+        confidenceFallbackReason ??
+        (safePayload.source === 'heuristic' || safePayload.source === 'mock'
+          ? 'deterministic_or_unavailable_llm_path'
+          : null),
+      stageTrace,
+    };
+
+    await persistConversation(
+      admin,
+      userId,
+      threadId,
+      prompt,
+      safePayload,
+      mode,
+      persisted,
+      orchestrationMeta
+    );
 
     return NextResponse.json({
       success: true,
@@ -881,6 +1073,10 @@ export async function POST(req: Request) {
       source: safePayload.source,
       policy_filtered: safePayload.policyFiltered,
       filter_reason: safePayload.filterReason,
+      orchestration_version: orchestrationMeta.version,
+      confidence_gate_triggered: orchestrationMeta.confidenceGateTriggered,
+      fallback_reason: orchestrationMeta.fallbackReason,
+      stage_trace: orchestrationMeta.stageTrace,
     });
   } catch (error) {
     console.error('[Navigator API]', error);
