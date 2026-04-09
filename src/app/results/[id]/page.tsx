@@ -2,12 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import {
   AlertTriangle,
   ArrowLeft,
   BarChart3,
   Camera,
   Download,
+  MessageCircle,
   PlayCircle,
   Video,
 } from "lucide-react";
@@ -25,6 +27,7 @@ import RunProvenanceBadge from "@/components/results/RunProvenanceBadge";
 import { exportReportAsPDF } from "@/lib/export/generatePDF";
 import { buildRunProvenance } from "@/lib/session/runProvenance";
 import type { AnalysisSessionResult } from "@/lib/session/analysisSession";
+import type { AnalysisTrace } from "@/lib/trace/traceTypes";
 import { buildReportBundle } from "@/lib/reports";
 import {
   CONCERN_BADGE_STYLES,
@@ -52,6 +55,183 @@ const CONCERN_DOMAINS = [
   { key: "pathDeviation", label: "Path deviation", desc: "Walking in a straight line vs. veering" },
 ];
 
+type HotspotSeverity = "low" | "medium" | "high";
+
+interface AssistantIssueHotspot {
+  id: string;
+  title: string;
+  description: string;
+  domain: string;
+  severity: HotspotSeverity;
+  frameIndex: number;
+  timestampMs: number;
+}
+
+function toHotspotSeverity(level: string): HotspotSeverity {
+  const normalized = level.toLowerCase();
+  if (normalized === "significant" || normalized === "high") return "high";
+  if (normalized === "moderate") return "medium";
+  return "low";
+}
+
+function hasConcernSignal(level: string): boolean {
+  const normalized = level.toLowerCase();
+  return normalized !== "none";
+}
+
+function pickMaxBy<T>(items: T[], valueOf: (item: T) => number): T | null {
+  if (items.length === 0) return null;
+  let winner = items[0];
+  let winnerScore = valueOf(winner);
+  for (let i = 1; i < items.length; i += 1) {
+    const score = valueOf(items[i]);
+    if (score > winnerScore) {
+      winner = items[i];
+      winnerScore = score;
+    }
+  }
+  return winner;
+}
+
+function pickPathDeviationFrame(trace: AnalysisTrace): { frameIndex: number; timestampMs: number } | null {
+  const points = trace.frames
+    .filter((frame) => frame.hipMidpoint)
+    .map((frame) => ({
+      frameIndex: frame.frameIndex,
+      timestampMs: frame.timestampMs,
+      t: frame.timestampMs,
+      x: frame.hipMidpoint!.x,
+    }));
+
+  if (points.length < 6) return null;
+
+  const meanT = points.reduce((sum, p) => sum + p.t, 0) / points.length;
+  const meanX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
+
+  const numerator = points.reduce((sum, p) => sum + (p.t - meanT) * (p.x - meanX), 0);
+  const denominator = points.reduce((sum, p) => sum + (p.t - meanT) ** 2, 0);
+  const slope = denominator === 0 ? 0 : numerator / denominator;
+  const intercept = meanX - slope * meanT;
+
+  const winner = pickMaxBy(points, (p) => Math.abs(p.x - (slope * p.t + intercept)));
+  if (!winner) return null;
+
+  return { frameIndex: winner.frameIndex, timestampMs: winner.timestampMs };
+}
+
+function buildAssistantIssueHotspots(result: AnalysisSessionResult): AssistantIssueHotspot[] {
+  const trace = result.trace;
+  if (!trace || trace.frames.length === 0) return [];
+
+  const hotspots: AssistantIssueHotspot[] = [];
+  const suppressed = new Set(result.concerns.suppressedDomains);
+
+  if (!suppressed.has("asymmetry") && hasConcernSignal(result.concerns.asymmetry)) {
+    const asymmetryFrame = pickMaxBy(
+      trace.frames.filter((f) => f.leftAnkle && f.rightAnkle),
+      (f) => Math.abs((f.leftAnkle?.y ?? 0) - (f.rightAnkle?.y ?? 0))
+    );
+    if (asymmetryFrame) {
+      hotspots.push({
+        id: "asymmetry_peak",
+        title: "Left-right asymmetry peak",
+        description: "Largest left-right ankle difference in this clip.",
+        domain: "asymmetry",
+        severity: toHotspotSeverity(result.concerns.asymmetry),
+        frameIndex: asymmetryFrame.frameIndex,
+        timestampMs: asymmetryFrame.timestampMs,
+      });
+    }
+  }
+
+  if (!suppressed.has("irregularRhythm") && hasConcernSignal(result.concerns.irregularRhythm)) {
+    const durations = trace.gaitCycles.map((cycle) => cycle.durationMs);
+    if (durations.length > 0) {
+      const sorted = [...durations].sort((a, b) => a - b);
+      const median = sorted[Math.floor(sorted.length / 2)];
+      const cycle = pickMaxBy(trace.gaitCycles, (entry) => Math.abs(entry.durationMs - median));
+      if (cycle) {
+        hotspots.push({
+          id: "rhythm_outlier",
+          title: "Rhythm irregularity moment",
+          description: "Step timing differs most from the clip's typical rhythm here.",
+          domain: "irregularRhythm",
+          severity: toHotspotSeverity(result.concerns.irregularRhythm),
+          frameIndex: Math.max(0, Math.round((cycle.startFrame + cycle.endFrame) / 2)),
+          timestampMs: Math.max(0, Math.round((cycle.startTimeMs + cycle.endTimeMs) / 2)),
+        });
+      }
+    }
+  }
+
+  if (!suppressed.has("lateralInstability") && hasConcernSignal(result.concerns.lateralInstability)) {
+    const lateralFrame = pickMaxBy(
+      trace.frames.filter((f) => typeof f.lateralOffset === "number"),
+      (f) => Math.abs(f.lateralOffset ?? 0)
+    );
+    if (lateralFrame) {
+      hotspots.push({
+        id: "lateral_instability_peak",
+        title: "Lateral instability peak",
+        description: "Greatest side-to-side trunk offset in this clip.",
+        domain: "lateralInstability",
+        severity: toHotspotSeverity(result.concerns.lateralInstability),
+        frameIndex: lateralFrame.frameIndex,
+        timestampMs: lateralFrame.timestampMs,
+      });
+    }
+  }
+
+  if (!suppressed.has("pathDeviation") && hasConcernSignal(result.concerns.pathDeviation)) {
+    const pathFrame = pickPathDeviationFrame(trace);
+    if (pathFrame) {
+      hotspots.push({
+        id: "path_deviation_peak",
+        title: "Path deviation peak",
+        description: "Greatest deviation from a straight walking path.",
+        domain: "pathDeviation",
+        severity: toHotspotSeverity(result.concerns.pathDeviation),
+        frameIndex: pathFrame.frameIndex,
+        timestampMs: pathFrame.timestampMs,
+      });
+    }
+  }
+
+  if (result.quality.result !== "pass") {
+    const lowVisibilityFrame = pickMaxBy(trace.frames, (f) => 1 - f.bodyVisibility);
+    if (lowVisibilityFrame) {
+      hotspots.push({
+        id: "low_visibility",
+        title: "Low-visibility segment",
+        description: "Tracking confidence drops here, so interpretation is less certain.",
+        domain: "quality",
+        severity: result.quality.result === "borderline" ? "medium" : "high",
+        frameIndex: lowVisibilityFrame.frameIndex,
+        timestampMs: lowVisibilityFrame.timestampMs,
+      });
+    }
+  }
+
+  const severityRank: Record<HotspotSeverity, number> = {
+    high: 3,
+    medium: 2,
+    low: 1,
+  };
+
+  const unique = new Map<string, AssistantIssueHotspot>();
+  for (const spot of hotspots) {
+    unique.set(`${spot.domain}_${spot.frameIndex}`, spot);
+  }
+
+  return Array.from(unique.values())
+    .sort((a, b) => {
+      const severityDelta = severityRank[b.severity] - severityRank[a.severity];
+      if (severityDelta !== 0) return severityDelta;
+      return a.timestampMs - b.timestampMs;
+    })
+    .slice(0, 6);
+}
+
 function normalizeResult(raw: string): AnalysisSessionResult {
   const parsed = JSON.parse(raw) as AnalysisSessionResult & {
     isDemo?: boolean;
@@ -76,6 +256,11 @@ function formatDomainLabel(domain: string): string {
   return domain.charAt(0).toUpperCase() + domain.slice(1).replace(/([A-Z])/g, " $1");
 }
 
+const AssistantPanel = dynamic(() => import("@/components/results/AssistantPanel"), {
+  ssr: false,
+  loading: () => <div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">Loading assistant...</div>,
+});
+
 export default function ResultsPage() {
   const params = useParams();
   const router = useRouter();
@@ -85,6 +270,8 @@ export default function ResultsPage() {
   const [activeTab, setActiveTab] = useState<ResultTab>("summary");
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [exportAvailable, setExportAvailable] = useState(false);
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  const [jumpToFrameIndex, setJumpToFrameIndex] = useState<number | null>(null);
 
   useEffect(() => {
     // Try sessionStorage first (fast, same-session), then IndexedDB (persistent)
@@ -215,6 +402,78 @@ export default function ResultsPage() {
 
     return Array.from(new Set(tips)).slice(0, 4);
   }, [result]);
+
+  const assistantMetrics = useMemo(() => {
+    if (!result) return undefined;
+
+    return {
+      symmetry_index: result.features.stepSymmetry.value,
+      cadence: result.features.cadence.value,
+      frontal_asymmetry: result.features.frontalAsymmetry.value,
+      stride_regularity: result.features.strideRegularity.value,
+      path_deviation: result.features.pathDeviation.value,
+      base_of_support: result.features.baseOfSupport.value,
+    };
+  }, [result]);
+
+  const assistantRiskCategory = useMemo(() => {
+    if (!result) return "unknown";
+
+    switch (result.concerns.overallLevel) {
+      case "significant":
+        return "high";
+      case "moderate":
+        return "moderate";
+      case "mild":
+      case "none":
+      default:
+        return "low";
+    }
+  }, [result]);
+
+  const assistantContext = useMemo(() => {
+    if (!result) return undefined;
+
+    const hotspots = buildAssistantIssueHotspots(result);
+
+    return {
+      summary: result.reports?.caregiver?.observationsText,
+      confidence_notes: result.quality.confidenceNotes,
+      followup_priority: result.concerns.followupPriority,
+      assessed_domains: result.concerns.assessedDomains,
+      retake_suggestions: result.quality.retakeSuggestions,
+      quality_result: result.quality.result,
+      issue_hotspots: hotspots.map((spot) => ({
+        id: spot.id,
+        title: spot.title,
+        description: spot.description,
+        domain: spot.domain,
+        severity: spot.severity,
+        frame_index: spot.frameIndex,
+        timestamp_ms: spot.timestampMs,
+      })),
+    };
+  }, [result]);
+
+  const assistantIssueHotspots = useMemo(() => {
+    if (!result) return [];
+    return buildAssistantIssueHotspots(result);
+  }, [result]);
+
+  const handleFocusIssue = (frameIndex: number) => {
+    setActiveTab("video");
+    setJumpToFrameIndex(null);
+    requestAnimationFrame(() => {
+      setJumpToFrameIndex(frameIndex);
+    });
+  };
+
+  useEffect(() => {
+    if (!isAssistantOpen) {
+      const toggle = document.getElementById("assistant-toggle-button") as HTMLButtonElement | null;
+      toggle?.focus();
+    }
+  }, [isAssistantOpen]);
 
   if (!result) {
     return (
@@ -634,6 +893,7 @@ export default function ResultsPage() {
               <AnnotatedVideoPlayer
                 trace={result.trace!}
                 videoUrl={videoUrl!}
+                jumpToFrameIndex={jumpToFrameIndex}
               />
             ) : hasTrace && !hasVideo ? (
               <div className="text-center py-12 space-y-3">
@@ -663,6 +923,39 @@ export default function ResultsPage() {
         >
           <ArrowLeft className="h-3.5 w-3.5" />
           Back to start
+        </Button>
+      </div>
+
+      <div className="fixed bottom-3 right-3 z-50 flex flex-col items-end gap-2 print:hidden sm:bottom-4 sm:right-4">
+        {isAssistantOpen && (
+          <div
+            id="ai-assistant-panel"
+            className="h-[clamp(24rem,72dvh,46rem)] max-h-[calc(100dvh-5.5rem)] w-[clamp(18rem,calc(100vw-1rem),30rem)] max-w-[calc(100vw-1rem)] overflow-auto rounded-2xl shadow-2xl sm:resize"
+          >
+            <AssistantPanel
+              resultId={result.id}
+              metrics={assistantMetrics}
+              risk_category={assistantRiskCategory}
+              context={assistantContext}
+              issueHotspots={assistantIssueHotspots}
+              isOpen={isAssistantOpen}
+              onFocusIssue={handleFocusIssue}
+              onToggle={() => setIsAssistantOpen(false)}
+            />
+          </div>
+        )}
+
+        <Button
+          id="assistant-toggle-button"
+          variant="outline"
+          size="sm"
+          onClick={() => setIsAssistantOpen((prev) => !prev)}
+          className="shadow-lg"
+          aria-expanded={isAssistantOpen}
+          aria-controls="ai-assistant-panel"
+        >
+          <MessageCircle className="mr-2 h-5 w-5" />
+          {isAssistantOpen ? "Close Assistant" : "Ask AI"}
         </Button>
       </div>
     </div>
