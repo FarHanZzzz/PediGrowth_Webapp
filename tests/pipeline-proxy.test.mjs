@@ -1,11 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import {
+import * as pipelineProxyModule from '../src/lib/api/pipelineProxy.ts';
+
+const pipelineProxyExports =
+  'default' in pipelineProxyModule ? pipelineProxyModule.default : pipelineProxyModule;
+
+const {
   forwardLandmarkPrediction,
   probePipelineHealth,
   sanitizePredictPayload,
-} from '../src/lib/api/pipelineProxy.ts';
+} = pipelineProxyExports;
 
 const originalFetch = globalThis.fetch;
 

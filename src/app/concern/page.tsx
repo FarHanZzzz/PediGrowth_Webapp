@@ -19,6 +19,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { FOLLOWUP_BADGE_STYLES, FOLLOWUP_CALLOUT_STYLES } from "@/lib/presentation/severity";
+import {
+  readSession,
+  readSessionRaw,
+  writeSession,
+} from "@/lib/session/sessionStorage";
 
 const RED_FLAGS = [
   { id: "rf-1", label: "Loss of previously acquired motor skills", urgent: true },
@@ -34,30 +39,22 @@ export default function ConcernPage() {
   const router = useRouter();
   const [childName] = useState(() => {
     if (typeof window === "undefined") return "your child";
-    try {
-      const raw =
-        sessionStorage.getItem("gaitbridge_session") ??
-        sessionStorage.getItem("pedigrowth_session");
-      if (!raw) return "your child";
-      const session = JSON.parse(raw);
-      return session.nickname || "your child";
-    } catch {
-      return "your child";
-    }
+    const session = readSession<{ nickname?: string }>();
+    return session?.nickname || "your child";
   });
   const [flags, setFlags] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    const raw =
-      sessionStorage.getItem("gaitbridge_session") ??
-      sessionStorage.getItem("pedigrowth_session");
+    const raw = readSessionRaw();
     if (!raw) {
       router.replace("/start");
       return;
     }
 
-    if (!sessionStorage.getItem("gaitbridge_session")) {
-      sessionStorage.setItem("gaitbridge_session", raw);
+    try {
+      writeSession(JSON.parse(raw));
+    } catch {
+      // Ignore malformed legacy payloads and let downstream guards handle them.
     }
   }, [router]);
 

@@ -33,6 +33,11 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { storeVideo } from "@/lib/session/videoStore";
+import {
+  readSession,
+  readSessionRaw,
+  writeSession,
+} from "@/lib/session/sessionStorage";
 import { getApprovedHeroClip, getHeroClipDefinition } from "@/lib/demo/heroManifest";
 import { runCapturePreflight, type CapturePreflightResult } from "@/lib/quality/capturePreflight";
 
@@ -105,31 +110,24 @@ function readSavedContextDraft(): ClinicianContextDraft {
     return EMPTY_CONTEXT_DRAFT;
   }
 
-  try {
-    const raw =
-      sessionStorage.getItem("gaitbridge_session") ??
-      sessionStorage.getItem("pedigrowth_session");
-    if (!raw) return EMPTY_CONTEXT_DRAFT;
-
-    const parsed = JSON.parse(raw) as {
-      clinicianContext?: Partial<ClinicianContextPayload>;
-    };
-    const saved = parsed.clinicianContext;
-    if (!saved) return EMPTY_CONTEXT_DRAFT;
-
-    return {
-      caregiverMainConcern: saved.caregiverMainConcern ?? "",
-      symptomDuration: saved.symptomDuration ?? "",
-      fallsFrequency: saved.fallsFrequency ?? "",
-      recentTherapyChanges: saved.recentTherapyChanges ?? "",
-      recentSurgeryInterventionChanges: saved.recentSurgeryInterventionChanges ?? "",
-      assistiveDeviceSupport: saved.assistiveDeviceSupport ?? "",
-      priorDiagnosisOrSpecialistReview: saved.priorDiagnosisOrSpecialistReview ?? "",
-      correctedAge: saved.correctedAge ?? "",
-    };
-  } catch {
+  const parsed = readSession<{
+    clinicianContext?: Partial<ClinicianContextPayload>;
+  }>();
+  const saved = parsed?.clinicianContext;
+  if (!saved) {
     return EMPTY_CONTEXT_DRAFT;
   }
+
+  return {
+    caregiverMainConcern: saved.caregiverMainConcern ?? "",
+    symptomDuration: saved.symptomDuration ?? "",
+    fallsFrequency: saved.fallsFrequency ?? "",
+    recentTherapyChanges: saved.recentTherapyChanges ?? "",
+    recentSurgeryInterventionChanges: saved.recentSurgeryInterventionChanges ?? "",
+    assistiveDeviceSupport: saved.assistiveDeviceSupport ?? "",
+    priorDiagnosisOrSpecialistReview: saved.priorDiagnosisOrSpecialistReview ?? "",
+    correctedAge: saved.correctedAge ?? "",
+  };
 }
 
 function buildClinicianContextPayload(
@@ -181,12 +179,13 @@ export default function CapturePage() {
   const validationMode = process.env.NEXT_PUBLIC_VALIDATION_MODE === "true";
 
   useEffect(() => {
-    const raw = sessionStorage.getItem("gaitbridge_session");
+    const raw = readSessionRaw();
     if (!raw) {
       router.replace("/start");
     } else {
       try {
         const session = JSON.parse(raw);
+        writeSession(session);
         if (session.nickname) {
           setChildName(session.nickname);
         }
@@ -315,10 +314,10 @@ export default function CapturePage() {
       await storeVideo(sessionId, videoFile);
 
       // Update session with video metadata + sessionId
-      const existing = JSON.parse(sessionStorage.getItem("gaitbridge_session") || "{}");
+      const existing = readSession<Record<string, unknown>>() ?? {};
       const persistedContext = buildClinicianContextPayload(clinicianContext);
 
-      sessionStorage.setItem("gaitbridge_session", JSON.stringify({
+      writeSession({
         ...existing,
         sessionId,
         sourceType,
@@ -333,7 +332,7 @@ export default function CapturePage() {
           capturedAt: new Date().toISOString(),
         },
         clinicianContext: persistedContext,
-      }));
+      });
 
       router.push("/analyzing");
     } catch (err) {

@@ -1,10 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import {
+import * as trackingRecoveryModule from '../src/lib/session/trackingRecovery.ts';
+
+const trackingRecoveryExports =
+  'default' in trackingRecoveryModule ? trackingRecoveryModule.default : trackingRecoveryModule;
+
+const {
   shouldAdoptRecoveryPass,
   shouldRunRecoveryPass,
-} from '../src/lib/session/trackingRecovery.ts';
+} = trackingRecoveryExports;
 
 test('runs recovery pass when detection is weak and quality is usable', () => {
   assert.equal(shouldRunRecoveryPass(0.42, 0.5), true);

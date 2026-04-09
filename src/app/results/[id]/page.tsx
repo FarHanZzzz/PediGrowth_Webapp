@@ -16,6 +16,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import AnnotatedVideoPlayer from "@/components/results/AnnotatedVideoPlayer";
 import { getResult } from "@/lib/session/videoStore";
+import {
+  readResultRaw,
+  readSession,
+  writeResult,
+} from "@/lib/session/sessionStorage";
 import RunProvenanceBadge from "@/components/results/RunProvenanceBadge";
 import { exportReportAsPDF } from "@/lib/export/generatePDF";
 import { buildRunProvenance } from "@/lib/session/runProvenance";
@@ -83,7 +88,7 @@ export default function ResultsPage() {
 
   useEffect(() => {
     // Try sessionStorage first (fast, same-session), then IndexedDB (persistent)
-    const raw = sessionStorage.getItem(`pedigrowth_result_${resultId}`);
+    const raw = readResultRaw(resultId);
     if (raw) {
       setResult(normalizeResult(raw));
     } else {
@@ -92,7 +97,7 @@ export default function ResultsPage() {
         if (stored) {
           setResult(normalizeResult(JSON.stringify(stored)));
           // Re-populate sessionStorage for fast subsequent access
-          sessionStorage.setItem(`pedigrowth_result_${resultId}`, JSON.stringify(stored));
+          writeResult(resultId, stored);
         }
       }).catch(() => {});
     }
@@ -104,13 +109,8 @@ export default function ResultsPage() {
     const sessionId =
       result.trace?.sessionId ??
       (() => {
-        try {
-          const sessionData = sessionStorage.getItem("pedigrowth_session");
-          if (!sessionData) return null;
-          return JSON.parse(sessionData).sessionId ?? null;
-        } catch {
-          return null;
-        }
+        const session = readSession<{ sessionId?: string }>();
+        return session?.sessionId ?? null;
       })();
 
     if (!sessionId) return;
@@ -557,8 +557,10 @@ export default function ResultsPage() {
                 variant="secondary"
                 className="flex-1 gap-2 text-xs"
                 onClick={() => {
-                  const sessionRaw = sessionStorage.getItem("pedigrowth_session");
-                  const session = sessionRaw ? JSON.parse(sessionRaw) : {};
+                  const session = readSession<{
+                    nickname?: string;
+                    ageMonths?: number;
+                  }>() ?? {};
                   // Build flat metrics map from feature values
                   const metricsMap: Record<string, number | string> = {};
                   if (result.features) {

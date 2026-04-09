@@ -3,11 +3,16 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import {
+import * as runProvenanceModule from '../src/lib/session/runProvenance.ts';
+
+const runProvenanceExports =
+  'default' in runProvenanceModule ? runProvenanceModule.default : runProvenanceModule;
+
+const {
   buildHeroExportPath,
   buildRunProvenance,
   getRunLabel,
-} from '../src/lib/session/runProvenance.ts';
+} = runProvenanceExports;
 
 const repoRoot = process.cwd();
 

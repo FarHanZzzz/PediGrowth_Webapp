@@ -20,6 +20,11 @@ import {
 } from "lucide-react";
 import { runAnalysisPipeline } from "@/lib/session/analysisSession";
 import { saveResult } from "@/lib/session/videoStore";
+import {
+  readSessionRaw,
+  writeResultRaw,
+  writeSession,
+} from "@/lib/session/sessionStorage";
 import type { PipelineProgress } from "@/lib/session/analysisSession";
 
 const STAGE_LABELS = [
@@ -57,19 +62,14 @@ export default function AnalyzingPage() {
     if (pipelineRan.current) return;
     pipelineRan.current = true;
 
-    const raw =
-      sessionStorage.getItem("gaitbridge_session") ??
-      sessionStorage.getItem("pedigrowth_session");
+    const raw = readSessionRaw();
     if (!raw) {
       router.replace("/start");
       return;
     }
 
-    if (!sessionStorage.getItem("gaitbridge_session")) {
-      sessionStorage.setItem("gaitbridge_session", raw);
-    }
-
     const session = JSON.parse(raw);
+    writeSession(session);
     const sessionId = session.sessionId;
     const nickname = session.nickname || "your child";
     const ageMonths = session.ageMonths || 36;
@@ -104,8 +104,7 @@ export default function AnalyzingPage() {
         const serialized = JSON.stringify(result);
         // sessionStorage has a ~5MB limit; IndexedDB is the primary store
         try {
-          sessionStorage.setItem(`gaitbridge_result_${resultId}`, serialized);
-          sessionStorage.setItem(`pedigrowth_result_${resultId}`, serialized);
+          writeResultRaw(resultId, serialized);
         } catch {
           // QuotaExceededError â€” fall through, IndexedDB will handle it
           console.warn("sessionStorage quota exceeded, using IndexedDB only");

@@ -22,6 +22,7 @@ import {
   RUN_TONE_BADGE_STYLES,
   toConcernLevel,
 } from "@/lib/presentation/severity";
+import { collectResultIds, readResultRaw } from "@/lib/session/sessionStorage";
 
 type HistoryStatus = "stable" | "follow_up" | "retake";
 
@@ -37,31 +38,17 @@ interface HistoryRow {
   routeLabel: string;
 }
 
-interface StoredResultSummary {
-  run?: {
-    classification?: string;
-  };
+interface ParsedResultSummary {
+  run?: { classification?: string; analyzedAt?: string };
   assessmentMode?: string;
-  quality?: {
-    result?: string;
-  };
-  concerns?: {
-    overallLevel?: string;
-    viewLabel?: string;
-  };
-  trace?: {
-    pipeline?: {
-      direction?: string;
-    };
-  };
-  session?: {
-    nickname?: string;
-    ageMonths?: number;
-  };
+  quality?: { result?: string; confidenceNotes?: string };
+  concerns?: { overallLevel?: string; viewLabel?: string };
+  trace?: { pipeline?: { direction?: string } };
+  session?: { nickname?: string; ageMonths?: number };
   analyzedAt?: string;
 }
 
-function deriveStatus(result: StoredResultSummary): HistoryStatus {
+function deriveStatus(result: ParsedResultSummary): HistoryStatus {
   if (result?.run?.classification === "validation_failure") {
     return "retake";
   }
@@ -83,34 +70,19 @@ function buildRowsFromSessionStorage(): HistoryRow[] {
     return [];
   }
 
-  const ids = new Set<string>();
-
-  for (let i = 0; i < window.sessionStorage.length; i += 1) {
-    const key = window.sessionStorage.key(i);
-    if (!key) continue;
-
-    if (key.startsWith("gaitbridge_result_")) {
-      ids.add(key.replace("gaitbridge_result_", ""));
-    }
-
-    if (key.startsWith("pedigrowth_result_")) {
-      ids.add(key.replace("pedigrowth_result_", ""));
-    }
-  }
+  const ids = collectResultIds(window.sessionStorage);
 
   const rows: HistoryRow[] = [];
 
   for (const id of ids) {
-    const raw =
-      window.sessionStorage.getItem(`gaitbridge_result_${id}`) ??
-      window.sessionStorage.getItem(`pedigrowth_result_${id}`);
+    const raw = readResultRaw(id);
 
     if (!raw) {
       continue;
     }
 
     try {
-      const result = JSON.parse(raw);
+      const result = JSON.parse(raw) as ParsedResultSummary;
       const analyzedAt = result?.analyzedAt ?? result?.run?.analyzedAt ?? null;
       const routeLabel =
         result?.concerns?.viewLabel ??

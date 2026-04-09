@@ -65,6 +65,7 @@ export default function ClinicianResultPage() {
     }
   });
   const [shareLinkStatus, setShareLinkStatus] = useState<string | null>(null);
+  const [isCreatingShareLink, setIsCreatingShareLink] = useState(false);
 
   const {
     result,
@@ -240,7 +241,59 @@ export default function ClinicianResultPage() {
     window.print();
   };
 
-  const handleCopyShareLink = async () => {
+  const handleCreateSecureShareLink = async () => {
+    if (isCreatingShareLink) return;
+
+    if (!result.reports?.caregiver || !result.reports?.clinician || !result.reports?.handoffText) {
+      setShareLinkStatus("Secure share link is unavailable for this result. Re-run analysis to generate a full report bundle.");
+      return;
+    }
+
+    setIsCreatingShareLink(true);
+    try {
+      const response = await fetch("/api/share/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          assessmentId: result.id,
+          payload: {
+            caregiver: result.reports.caregiver,
+            clinician: result.reports.clinician,
+            handoffText: result.reports.handoffText,
+          },
+        }),
+      });
+
+      const body = (await response.json()) as {
+        error?: string;
+        shareUrl?: string;
+        expiresAt?: string;
+      };
+
+      if (!response.ok || !body.shareUrl) {
+        throw new Error(body.error ?? "Unable to create secure share link.");
+      }
+
+      const expiryText = body.expiresAt
+        ? ` Expires ${new Date(body.expiresAt).toLocaleString()}.`
+        : "";
+
+      try {
+        await navigator.clipboard.writeText(body.shareUrl);
+        setShareLinkStatus(`Secure share link created and copied.${expiryText}`);
+      } catch {
+        window.prompt("Copy this secure share link:", body.shareUrl);
+        setShareLinkStatus(`Secure share link created.${expiryText} Clipboard access was unavailable.`);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to create secure share link.";
+      setShareLinkStatus(message);
+    } finally {
+      setIsCreatingShareLink(false);
+    }
+  };
+
+  const handleCopyLocalSessionLink = async () => {
     const shareUrl = window.location.href;
 
     try {
@@ -702,13 +755,22 @@ export default function ClinicianResultPage() {
                   <Printer className="h-3.5 w-3.5" />
                   Print packet
                 </Button>
-                <Button variant="outline" className="gap-2 text-xs" onClick={handleCopyShareLink}>
+                <Button
+                  variant="outline"
+                  className="gap-2 text-xs"
+                  onClick={handleCreateSecureShareLink}
+                  disabled={isCreatingShareLink}
+                >
                   <Copy className="h-3.5 w-3.5" />
-                  Copy session link (local)
+                  {isCreatingShareLink ? "Creating secure link..." : "Create secure share link"}
                 </Button>
                 <Button variant="outline" className="gap-2 text-xs" disabled>
                   <FileText className="h-3.5 w-3.5" />
                   Direct PDF export unavailable
+                </Button>
+                <Button variant="outline" className="gap-2 text-xs" onClick={handleCopyLocalSessionLink}>
+                  <Copy className="h-3.5 w-3.5" />
+                  Copy local session link
                 </Button>
               </div>
               <p className="mt-2 text-xs text-muted-foreground">

@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { resolveExtractionDuration } from '../src/lib/pose/index.ts';
+import * as poseModule from '../src/lib/pose/index.ts';
+
+const poseExports = 'default' in poseModule ? poseModule.default : poseModule;
+const { resolveExtractionDuration } = poseExports;
 
 test('resolveExtractionDuration returns full video duration (no hard cap)', () => {
   assert.equal(resolveExtractionDuration(12.5), 12.5);

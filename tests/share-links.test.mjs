@@ -1,12 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import {
+import * as shareLinksModule from '../src/lib/security/shareLinks.ts';
+
+const shareLinksExports =
+  'default' in shareLinksModule ? shareLinksModule.default : shareLinksModule;
+
+const {
   generateShareToken,
   hashShareToken,
   normalizeSharePolicy,
   computeExpiryDate,
-} from '../src/lib/security/shareLinks.ts';
+} = shareLinksExports;
 
 test('generateShareToken returns non-empty url-safe token', () => {
   const token = generateShareToken();

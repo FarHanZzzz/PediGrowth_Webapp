@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import type { AnalysisSessionResult } from "@/lib/session/analysisSession";
 import { buildRunProvenance } from "@/lib/session/runProvenance";
+import { getResult } from "@/lib/session/videoStore";
+import {
+  readResultRaw,
+  readSession,
+  writeResult,
+} from "@/lib/session/sessionStorage";
 import { buildKeyFrames } from "@/lib/trace/buildKeyFrames";
 import { summarizeDetectionPath, type ConcernEvidence } from "@/lib/trace/summarizeDetectionPath";
 
@@ -60,14 +66,36 @@ export function useResultViewModel(resultId: string): ResultViewModel {
   const [exportAvailable, setExportAvailable] = useState(false);
 
   useEffect(() => {
-    const raw =
-      sessionStorage.getItem(`gaitbridge_result_${resultId}`) ??
-      sessionStorage.getItem(`pedigrowth_result_${resultId}`);
-    if (!raw) {
-      setResult(null);
-      return;
+    let active = true;
+
+    const raw = readResultRaw(resultId);
+    if (raw) {
+      setResult(normalizeResult(raw));
+      return () => {
+        active = false;
+      };
     }
-    setResult(normalizeResult(raw));
+
+    getResult(resultId)
+      .then((stored) => {
+        if (!active) return;
+        if (!stored) {
+          setResult(null);
+          return;
+        }
+
+        writeResult(resultId, stored);
+        setResult(normalizeResult(JSON.stringify(stored)));
+      })
+      .catch(() => {
+        if (active) {
+          setResult(null);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
   }, [resultId]);
 
   useEffect(() => {
@@ -96,13 +124,8 @@ export function useResultViewModel(resultId: string): ResultViewModel {
       const sessionId =
         resolvedResult.trace?.sessionId ??
         (() => {
-          try {
-            const sessionData = sessionStorage.getItem("gaitbridge_session");
-            if (!sessionData) return null;
-            return JSON.parse(sessionData).sessionId ?? null;
-          } catch {
-            return null;
-          }
+          const session = readSession<{ sessionId?: string }>();
+          return session?.sessionId ?? null;
         })();
 
       if (!sessionId) {

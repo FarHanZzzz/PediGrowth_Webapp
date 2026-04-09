@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { routeChild } from "@/lib/policy/routing-rules";
+import { readSession, writeSession } from "@/lib/session/sessionStorage";
 import type { AmbulatoryStatus } from "@/lib/types";
 
 type WalkingAnswer = "yes" | "no" | "not_sure" | "";
@@ -45,8 +46,14 @@ function readSavedSession(): {
     };
   }
 
-  const raw = sessionStorage.getItem("gaitbridge_session");
-  if (!raw) {
+  const session = readSession<{
+    consentTimestamp?: string;
+    ageMonths?: number | string;
+    walking?: WalkingAnswer;
+    nickname?: string;
+  }>();
+
+  if (!session) {
     return {
       consent: false,
       ageMonths: "",
@@ -55,25 +62,15 @@ function readSavedSession(): {
     };
   }
 
-  try {
-    const session = JSON.parse(raw);
-    return {
-      consent: Boolean(session.consentTimestamp),
-      ageMonths: session.ageMonths ? session.ageMonths.toString() : "",
-      walking: (session.walking as WalkingAnswer) || "",
-      nickname:
-        session.nickname && session.nickname !== "your child"
-          ? session.nickname
-          : "",
-    };
-  } catch {
-    return {
-      consent: false,
-      ageMonths: "",
-      walking: "" as WalkingAnswer,
-      nickname: "",
-    };
-  }
+  return {
+    consent: Boolean(session.consentTimestamp),
+    ageMonths: session.ageMonths ? session.ageMonths.toString() : "",
+    walking: (session.walking as WalkingAnswer) || "",
+    nickname:
+      session.nickname && session.nickname !== "your child"
+        ? session.nickname
+        : "",
+  };
 }
 
 export default function QuickGatePage() {
@@ -85,11 +82,22 @@ export default function QuickGatePage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const saved = readSavedSession();
-    setConsent(saved.consent);
-    setAgeMonths(saved.ageMonths);
-    setWalking(saved.walking);
-    setNickname(saved.nickname);
+    const savedSession = readSavedSession();
+
+    // Hydrate persisted intake state only after mount to keep SSR and first client render identical.
+    if (
+      !savedSession.consent &&
+      savedSession.ageMonths === "" &&
+      savedSession.walking === "" &&
+      savedSession.nickname === ""
+    ) {
+      return;
+    }
+
+    setConsent(savedSession.consent);
+    setAgeMonths(savedSession.ageMonths);
+    setWalking(savedSession.walking);
+    setNickname(savedSession.nickname);
   }, []);
 
   const canProceed = consent && ageMonths.trim() !== "" && walking !== "";
@@ -111,7 +119,7 @@ export default function QuickGatePage() {
     });
 
     // Store minimal session data
-    sessionStorage.setItem("gaitbridge_session", JSON.stringify({
+    writeSession({
       nickname: nickname.trim() || "your child",
       ageMonths: age,
       walking,
@@ -119,7 +127,7 @@ export default function QuickGatePage() {
       routeReason: decision.reason,
       policyVersion: decision.policyVersion,
       consentTimestamp: new Date().toISOString(),
-    }));
+    });
 
     // Route silently — no intermediate routing page
     if (decision.route === "route_a") {

@@ -128,8 +128,8 @@ export async function runCapturePreflight(videoBlob: Blob): Promise<CapturePrefl
 }
 
 async function seekTo(video: HTMLVideoElement, seconds: number): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    let timeout: ReturnType<typeof setTimeout>;
+  await new Promise<void>((resolve) => {
+    let timeout: ReturnType<typeof setTimeout> | null = null;
     
     const onSeeked = () => {
       cleanup();
@@ -140,7 +140,9 @@ async function seekTo(video: HTMLVideoElement, seconds: number): Promise<void> {
       resolve(); // Resolve anyway to proceed instead of hanging or failing the whole check
     };
     const cleanup = () => {
-      clearTimeout(timeout);
+      if (timeout !== null) {
+        clearTimeout(timeout);
+      }
       video.removeEventListener('seeked', onSeeked);
       video.removeEventListener('error', onError);
     };
