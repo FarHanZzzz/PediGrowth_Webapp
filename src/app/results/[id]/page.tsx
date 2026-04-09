@@ -10,13 +10,16 @@ import {
   Camera,
   Download,
   MessageCircle,
+  MessageSquare,
   PlayCircle,
+  Stethoscope,
   Video,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import AnnotatedVideoPlayer from "@/components/results/AnnotatedVideoPlayer";
+import PatientSimpleCards from "@/components/results/PatientSimpleCards";
 import { getResult } from "@/lib/session/videoStore";
 import {
   readResultRaw,
@@ -631,6 +634,27 @@ export default function ResultsPage() {
   const followupPriority = toFollowupPriority(result.concerns.followupPriority);
   const followupLabel = FOLLOWUP_LABELS[followupPriority];
   const followupSummary = FOLLOWUP_CALLOUT_TEXT[followupPriority];
+
+  const simpleCardObservations =
+    parentImpactRows.length > 0
+      ? parentImpactRows.slice(0, 3).map((entry) => `${entry.label}: ${entry.impact}`)
+      : [
+          "No major concern signal was detected in this clip.",
+          "Keep routine observation and note if walking pattern changes.",
+        ];
+
+  const simpleCardActions = [
+    "Keep this summary ready for your next appointment.",
+    "Track if balance, falls, or asymmetry changes this week.",
+    ...practicalRetakeTips.slice(0, 2).map((tip) => `If possible, record a new clip: ${tip}`),
+  ].slice(0, 4);
+
+  const simpleCardQuestions =
+    reportBundle?.caregiver?.clinicianQuestions?.slice(0, 5) ?? [
+      "What should we monitor daily at home?",
+      "Do these movement patterns suggest earlier review?",
+      "When should we repeat this assessment?",
+    ];
   const motorSummaryTimestamp =
     supplementalMotorMetadata?.completedAt ?? sessionClinicalAssessment?.assessedAt ?? null;
   const hasMotorScreenAttached = Boolean(sessionClinicalAssessment?.motorDelayAssessment);
@@ -771,68 +795,125 @@ export default function ResultsPage() {
           </p>
         </div>
 
-        <Card className="bg-surface-container-low">
-          <CardContent className="grid gap-3 p-4 sm:grid-cols-3">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Overall observation</p>
-              <p className="mt-1 text-base font-semibold">
+        <Card className="relative overflow-hidden border-0 bg-white/60 backdrop-blur-2xl shadow-xl shadow-black/5 ring-1 ring-white/80 transition-all hover:shadow-2xl hover:bg-white/80">
+          <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-transparent pointer-events-none" />
+          <CardContent className="relative grid gap-6 p-6 sm:grid-cols-3">
+            <div className="group">
+              <p className="text-[11px] font-extrabold uppercase tracking-widest text-[#5c7a76] mb-2">Overall observation</p>
+              <p className="text-lg font-bold leading-tight text-slate-800 transition-colors group-hover:text-primary">
                 {reportBundle?.caregiver.observationsText ??
                   (result.concerns.overallLevel === "none"
                     ? "No notable gait concern signals were detected in this clip."
                     : "This clip shows movement patterns worth reviewing more closely.")}
               </p>
               {reportBundle?.caregiver.contextSignalText && (
-                <p className="mt-2 text-sm text-foreground/85">
+                <p className="mt-2 text-sm font-medium text-slate-600">
                   {reportBundle.caregiver.contextSignalText}
                 </p>
               )}
             </div>
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">How certain this run is</p>
-              <p className="mt-1 text-sm font-medium text-foreground/90">{reportBundle?.caregiver.confidenceText ?? result.quality.confidenceNotes}</p>
+            <div className="group border-l border-white/40 pl-6">
+              <p className="text-[11px] font-extrabold uppercase tracking-widest text-[#5c7a76] mb-2">How certain this run is</p>
+              <p className="text-sm font-medium text-slate-700 leading-relaxed">
+                {reportBundle?.caregiver.confidenceText ?? result.quality.confidenceNotes}
+              </p>
             </div>
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Recommended next step</p>
-              <Badge variant="outline" className={`mt-1 text-[10px] ${FOLLOWUP_BADGE_STYLES[followupPriority]}`}>
+            <div className="group border-l border-white/40 pl-6">
+              <p className="text-[11px] font-extrabold uppercase tracking-widest text-[#5c7a76] mb-2">Recommended next step</p>
+              <Badge variant="outline" className={`mb-2 text-[10px] uppercase font-bold tracking-wider shadow-sm ${FOLLOWUP_BADGE_STYLES[followupPriority]}`}>
                 {followupLabel}
               </Badge>
-              <p className="mt-1 text-sm font-medium text-foreground/90">
+              <p className="text-sm font-medium text-slate-700 leading-relaxed">
                 {followupSummary}
               </p>
             </div>
           </CardContent>
         </Card>
 
-        <div className="flex rounded-2xl bg-surface-container-low p-1">
+        <div className="flex rounded-[1.25rem] bg-white/40 p-1.5 backdrop-blur-xl shadow-inner ring-1 ring-black/5 mx-auto max-w-2xl">
           {TABS.map((tab) => {
             const Icon = tab.icon;
             return (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
-                className={`flex-1 flex items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium transition-colors cursor-pointer ${
+                className={`flex-1 flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold transition-all duration-300 cursor-pointer ${
                   activeTab === tab.key
-                    ? "bg-surface-container-lowest shadow-sm text-foreground"
-                    : "text-muted-foreground hover:text-foreground"
+                    ? "bg-white text-slate-800 shadow-md ring-1 ring-white"
+                    : "text-slate-500 hover:text-slate-800 hover:bg-white/50"
                 }`}
               >
-                <Icon className="h-3.5 w-3.5" />
+                <Icon className={`h-4 w-4 ${activeTab === tab.key ? "opacity-100" : "opacity-70"}`} />
                 {tab.label}
               </button>
             );
           })}
         </div>
 
+        {result.clinicianFeedback && (
+          <div className="relative overflow-hidden rounded-[1.5rem] bg-indigo-50/80 p-6 shadow-md ring-1 ring-indigo-200/50 backdrop-blur-sm border-l-4 border-l-indigo-500">
+            <div className="absolute top-0 right-0 p-4 opacity-[0.03] pointer-events-none transform translate-x-4 -translate-y-4">
+              <MessageSquare className="h-40 w-40 text-indigo-900" />
+            </div>
+            <div className="relative z-10 flex gap-5 md:items-center">
+              <div className="mt-1 shrink-0 rounded-full bg-indigo-100 p-3 text-indigo-700 ring-1 ring-indigo-200 shadow-sm hidden sm:block">
+                <Stethoscope className="h-6 w-6" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-[11px] font-extrabold uppercase tracking-widest text-indigo-900/60 mb-2">
+                  New Message From Your Clinical Care Team
+                </p>
+                <p className="text-xl font-medium text-slate-800 leading-relaxed max-w-3xl">
+                  "{result.clinicianFeedback.note}"
+                </p>
+                <p className="text-xs font-semibold text-indigo-900/50 mt-3 block">
+                  Sent on {new Date(result.clinicianFeedback.updatedAt).toLocaleString()}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {activeTab === "summary" && (
           <div className="space-y-4">
             <div
-              className={`rounded-xl border p-3 ${FOLLOWUP_CALLOUT_STYLES[followupPriority]}`}
+              className={`relative overflow-hidden rounded-[1.5rem] p-6 shadow-lg shadow-black/5 ring-1 border-0 ${FOLLOWUP_CALLOUT_STYLES[followupPriority]}`}
               role={followupPriority === "specialist" ? "alert" : undefined}
             >
-              <p className="text-[11px] font-semibold uppercase tracking-wide">Clinical follow-up priority</p>
-              <p className="mt-1 text-base font-bold">{followupLabel}</p>
-              <p className="text-sm font-medium">{followupSummary}</p>
+              <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none transform translate-x-4 -translate-y-4">
+                <AlertTriangle className="h-40 w-40" />
+              </div>
+              <div className="relative z-10">
+                <p className="text-[11px] font-extrabold uppercase tracking-widest opacity-80 mb-2">Clinical follow-up priority</p>
+                <p className="text-2xl font-black tracking-tight">{followupLabel}</p>
+                <p className="mt-1 text-sm font-medium opacity-90 max-w-xl">{followupSummary}</p>
+              </div>
             </div>
+
+              <PatientSimpleCards
+                summaryText={
+                  reportBundle?.caregiver?.observationsText ??
+                  (result.concerns.overallLevel === "none"
+                    ? "No notable gait concern signals were detected in this clip."
+                    : "This clip shows movement patterns worth reviewing more closely.")
+                }
+                confidenceText={
+                  reportBundle?.caregiver?.confidenceText ?? result.quality.confidenceNotes
+                }
+                observations={simpleCardObservations}
+                nextWeekActions={simpleCardActions}
+                followupLabel={followupLabel}
+                followupSummary={followupSummary}
+                followupPriority={followupPriority}
+                clinicianQuestions={simpleCardQuestions}
+              />
+
+              <details className="rounded-2xl border bg-surface-container-lowest/70 p-3">
+                <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Advanced details for deeper review
+                </summary>
+
+                <div className="mt-3 space-y-4">
 
             <Card className="bg-surface-container-lowest">
               <CardHeader className="pb-2">
@@ -1045,6 +1126,9 @@ export default function ResultsPage() {
                 This caregiver summary and clinician packet are now attached to this result and available in your local History page as a lightweight parent dashboard.
               </CardContent>
             </Card>
+
+              </div>
+            </details>
 
             <div className="flex flex-wrap gap-3">
               <Button

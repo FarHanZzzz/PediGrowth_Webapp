@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ClipboardList, FileClock, Home, Stethoscope, Video } from "lucide-react";
+import { ClipboardList, FileClock, Home, Stethoscope } from "lucide-react";
+import GlobalAssistantDock from "@/components/ai/GlobalAssistantDock";
 
 const NAV_ITEMS = [
   { href: "/", label: "Home", icon: Home },
   { href: "/start", label: "Intake", icon: ClipboardList },
-  { href: "/capture", label: "Capture", icon: Video },
   { href: "/history", label: "History", icon: FileClock },
 ];
 
@@ -98,6 +98,8 @@ export default function AppShell({
           Pedi-Growth supports concern documentation and follow-up conversations. It does not diagnose medical conditions and should be used with professional clinical review.
         </p>
       </footer>
+
+      <GlobalAssistantDock />
     </div>
   );
 }
