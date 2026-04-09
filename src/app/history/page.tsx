@@ -166,7 +166,7 @@ function buildRowsFromCloudRecords(records: CloudResultRecord[]): HistoryRow[] {
       analyzedAt:
         typeof payload.analyzedAt === "string"
           ? payload.analyzedAt
-          : record.updated_at ?? record.created_at ?? null ?? undefined,
+          : record.updated_at ?? record.created_at ?? undefined,
     });
 
     if (row) {
