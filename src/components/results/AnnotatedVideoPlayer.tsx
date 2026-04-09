@@ -24,6 +24,7 @@ interface Props {
   jumpToFrameIndex?: number | null;
   audience?: "caregiver" | "clinician";
   showAdvancedControls?: boolean;
+  onFrameChange?: (frameIndex: number, timestampMs: number) => void;
 }
 
 const SPEED_OPTIONS = [0.25, 0.5, 1];
@@ -55,6 +56,7 @@ export default function AnnotatedVideoPlayer({
   jumpToFrameIndex = null,
   audience = "clinician",
   showAdvancedControls = false,
+  onFrameChange,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -322,6 +324,12 @@ export default function AnnotatedVideoPlayer({
     ? `${(currentFrame.timestampMs / 1000).toFixed(2)}s`
     : "0.00s";
   const modeBadgeLabel = renderMode === "clean" ? "Standard overlay" : "Advanced overlay";
+
+  useEffect(() => {
+    if (!onFrameChange) return;
+    const frame = trace.frames[currentFrameIndex];
+    onFrameChange(currentFrameIndex, frame?.timestampMs ?? 0);
+  }, [currentFrameIndex, onFrameChange, trace.frames]);
 
   return (
     <div className="space-y-3">

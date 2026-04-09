@@ -263,6 +263,48 @@ export const AGE_NORMED_MILESTONES: MilestoneBand[] = [
       },
     ],
   },
+  {
+    minAge: 49,
+    maxAge: 60,
+    label: "49–60 months",
+    milestones: [
+      {
+        id: "m-49-1",
+        label: "Hops on one foot at least 2 times",
+        expectedByMonths: 54,
+        category: "gross_motor",
+        clinicalNote: "Single-leg hopping reflects lower-limb power, balance, and motor sequencing.",
+      },
+      {
+        id: "m-49-2",
+        label: "Maintains single-leg stance for 8-10 seconds",
+        expectedByMonths: 60,
+        category: "postural",
+        clinicalNote: "Sustained single-leg stance is a key indicator of dynamic postural control.",
+      },
+      {
+        id: "m-49-3",
+        label: "Walks heel-to-toe in a straight line for 6 steps",
+        expectedByMonths: 60,
+        category: "gross_motor",
+        clinicalNote: "Tandem gait challenges balance integration and bilateral coordination.",
+      },
+      {
+        id: "m-49-4",
+        label: "Jumps forward with two-foot takeoff and landing",
+        expectedByMonths: 60,
+        category: "gross_motor",
+        clinicalNote: "Forward jumping requires bilateral propulsion, landing control, and trunk stability.",
+      },
+      {
+        id: "m-49-5",
+        label: "Catches a medium ball using hands without trapping against chest",
+        expectedByMonths: 60,
+        category: "fine_motor",
+        clinicalNote: "Ball catching reflects visual-motor timing and coordinated upper-limb control.",
+      },
+    ],
+  },
 ];
 
 // ============================================================
@@ -463,7 +505,18 @@ export function getCurrentBand(ageMonths: number): MilestoneBand | null {
   const bands = AGE_NORMED_MILESTONES.filter(
     (band) => ageMonths >= band.minAge && ageMonths <= band.maxAge
   );
-  return bands.length > 0 ? bands[bands.length - 1] : null;
+  if (bands.length > 0) {
+    return bands[bands.length - 1];
+  }
+
+  // If age exceeds the highest configured band, use the latest band as
+  // the closest benchmark so downstream scoring remains stable.
+  const highestBand = AGE_NORMED_MILESTONES[AGE_NORMED_MILESTONES.length - 1] ?? null;
+  if (highestBand && ageMonths > highestBand.maxAge) {
+    return highestBand;
+  }
+
+  return null;
 }
 
 /**
@@ -492,13 +545,44 @@ export function shouldShowAIMS(ageMonths: number): boolean {
  * Compute motor delay summary from milestone check results.
  * Returns a structured summary object for the clinician handoff.
  */
+
+/** A single delayed milestone with its metadata for UI grouping */
+export interface DelayedMilestoneDetail {
+  id: string;
+  label: string;
+  expectedByMonths: number;
+  category: "gross_motor" | "fine_motor" | "postural";
+  bandLabel: string;
+}
+
+/** Milestones grouped by their age band for structured display */
+export interface DelayedByBand {
+  bandLabel: string;
+  milestones: DelayedMilestoneDetail[];
+}
+
+/** Milestones grouped by motor category for structured display */
+export interface DelayedByCategory {
+  category: "gross_motor" | "fine_motor" | "postural";
+  categoryLabel: string;
+  milestones: DelayedMilestoneDetail[];
+}
+
 export interface MotorDelayAssessment {
   /** Total milestones checked */
   totalChecked: number;
-  /** Milestones the child has NOT yet achieved */
+  /** Milestones the child has NOT yet achieved (flat labels — backward compat) */
   missingMilestones: string[];
-  /** Milestones from earlier bands not achieved (indicates delay) */
+  /** Milestones from earlier bands not achieved (flat labels — backward compat) */
   delayedMilestones: string[];
+  /** Delayed milestones grouped by age band for structured UI */
+  delayedByBand: DelayedByBand[];
+  /** Delayed milestones grouped by motor category for structured UI */
+  delayedByCategory: DelayedByCategory[];
+  /** Total achieved from prior bands (for progress display) */
+  achievedFromPriorCount: number;
+  /** Total expected from prior bands (for progress display) */
+  expectedFromPriorCount: number;
   /** AIMS items that were NOT observed (if applicable) */
   unobservedAIMSItems: string[];
   /** Overall delay flag based on milestone analysis */
@@ -506,6 +590,12 @@ export interface MotorDelayAssessment {
   /** Human-readable summary for the clinician */
   summaryNote: string;
 }
+
+const CATEGORY_LABELS: Record<string, string> = {
+  gross_motor: "Gross Motor",
+  fine_motor: "Fine Motor",
+  postural: "Postural Control",
+};
 
 export function computeMotorDelayAssessment(
   ageMonths: number,
@@ -517,10 +607,54 @@ export function computeMotorDelayAssessment(
   const currentBand = getCurrentBand(ageMonths);
   const currentBandMilestones = currentBand?.milestones ?? [];
 
-  // Delayed = milestones from PRIOR bands that are not achieved
-  const delayedMilestones = expectedFromPriorBands
-    .filter((m) => !achievedMilestoneIds.has(m.id))
-    .map((m) => m.label);
+  // ── Build enriched delayed milestone details (grouped data) ────
+  const priorBands = AGE_NORMED_MILESTONES.filter(
+    (band) => currentBand && band.maxAge < currentBand.minAge
+  );
+
+  const delayedDetails: DelayedMilestoneDetail[] = [];
+  for (const band of priorBands) {
+    for (const m of band.milestones) {
+      if (!achievedMilestoneIds.has(m.id)) {
+        delayedDetails.push({
+          id: m.id,
+          label: m.label,
+          expectedByMonths: m.expectedByMonths,
+          category: m.category,
+          bandLabel: band.label,
+        });
+      }
+    }
+  }
+
+  // Group by band
+  const byBandMap = new Map<string, DelayedMilestoneDetail[]>();
+  for (const d of delayedDetails) {
+    const arr = byBandMap.get(d.bandLabel) ?? [];
+    arr.push(d);
+    byBandMap.set(d.bandLabel, arr);
+  }
+  const delayedByBand: DelayedByBand[] = Array.from(byBandMap.entries()).map(
+    ([bandLabel, milestones]) => ({ bandLabel, milestones })
+  );
+
+  // Group by category
+  const byCatMap = new Map<string, DelayedMilestoneDetail[]>();
+  for (const d of delayedDetails) {
+    const arr = byCatMap.get(d.category) ?? [];
+    arr.push(d);
+    byCatMap.set(d.category, arr);
+  }
+  const delayedByCategory: DelayedByCategory[] = Array.from(byCatMap.entries()).map(
+    ([category, milestones]) => ({
+      category: category as DelayedMilestoneDetail["category"],
+      categoryLabel: CATEGORY_LABELS[category] ?? category,
+      milestones,
+    })
+  );
+
+  // Flat labels (backward compat for clinician page)
+  const delayedMilestones = delayedDetails.map((m) => m.label);
 
   // Missing = current band milestones that are not yet achieved
   const missingMilestones = currentBandMilestones
@@ -541,6 +675,10 @@ export function computeMotorDelayAssessment(
     delayFlag = "watch";
   }
 
+  // Progress counts
+  const achievedFromPriorCount = expectedFromPriorBands.length - delayedDetails.length;
+  const expectedFromPriorCount = expectedFromPriorBands.length;
+
   // Generate summary note
   let summaryNote = "";
   if (delayFlag === "concern") {
@@ -555,6 +693,10 @@ export function computeMotorDelayAssessment(
     totalChecked: expectedFromPriorBands.length + currentBandMilestones.length,
     missingMilestones,
     delayedMilestones,
+    delayedByBand,
+    delayedByCategory,
+    achievedFromPriorCount,
+    expectedFromPriorCount,
     unobservedAIMSItems,
     delayFlag,
     summaryNote,

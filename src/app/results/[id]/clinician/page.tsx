@@ -24,6 +24,7 @@ import EventTimeline from "@/components/results/EventTimeline";
 import KeyFrameGallery from "../../../../components/results/KeyFrameGallery";
 import AnalysisTracePanel from "@/components/results/AnalysisTracePanel";
 import HowAnalysisWorksPanel from "@/components/results/HowAnalysisWorksPanel";
+import Tier1Gait3DPanel from "@/components/results/Tier1Gait3DPanel";
 // ── Clinical assessment components (Motor Delay + GMFCS) ──────────
 import GMFCSCard from "@/components/clinical/GMFCSCard";
 import MotorDelayAssessmentSummary from "@/components/clinical/MotorDelayAssessmentSummary";
@@ -58,6 +59,8 @@ export default function ClinicianResultPage() {
   const noteStorageKey = `gaitbridge_clinician_note_${resultId}`;
 
   const [jumpToFrameIndex, setJumpToFrameIndex] = useState<number | null>(null);
+  const [currentEvidenceFrameIndex, setCurrentEvidenceFrameIndex] = useState<number | null>(null);
+  const [isTier1FrameSyncLocked, setIsTier1FrameSyncLocked] = useState(true);
   const [clinicianNote, setClinicianNote] = useState(() => {
     if (typeof window === "undefined") {
       return "";
@@ -205,6 +208,8 @@ export default function ClinicianResultPage() {
   );
 
   const packetTimestamp = result.analyzedAt ?? result.run.analyzedAt;
+  const canShowTier1ThreeD =
+    result.run.classification === "real_analysis" && hasTrace && hasVideo && Boolean(videoUrl);
   const clipUsabilityLabel =
     result.quality.result === "pass"
       ? "Usable for interpretation"
@@ -754,6 +759,7 @@ export default function ClinicianResultPage() {
                     jumpToFrameIndex={jumpToFrameIndex}
                     audience="clinician"
                     showAdvancedControls={false}
+                    onFrameChange={(frameIndex) => setCurrentEvidenceFrameIndex(frameIndex)}
                   />
                 ) : hasTrace ? (
                   <p className="text-xs text-muted-foreground">
@@ -763,6 +769,36 @@ export default function ClinicianResultPage() {
                   <p className="text-xs text-muted-foreground">
                     Full video evidence requires an analysis trace.
                   </p>
+                )}
+
+                {canShowTier1ThreeD && result.trace ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between rounded-lg border bg-muted/20 px-3 py-2 text-xs">
+                      <p className="text-muted-foreground">
+                        Tier 1 frame sync: {isTier1FrameSyncLocked ? "Locked to video timeline" : "Independent control"}
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2 text-[11px]"
+                        onClick={() => setIsTier1FrameSyncLocked((prev) => !prev)}
+                      >
+                        {isTier1FrameSyncLocked ? "Unlock" : "Lock"}
+                      </Button>
+                    </div>
+
+                    <Tier1Gait3DPanel
+                      trace={result.trace}
+                      selectedFrameIndex={isTier1FrameSyncLocked ? currentEvidenceFrameIndex : jumpToFrameIndex}
+                      onFrameSelect={isTier1FrameSyncLocked ? undefined : setJumpToFrameIndex}
+                      syncLocked={isTier1FrameSyncLocked}
+                    />
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-muted-foreground/30 bg-muted/20 p-3 text-xs text-muted-foreground">
+                    Tier 1 3D movement view is available for real-analysis runs with retained source video and trace data.
+                  </div>
                 )}
 
                 {hasTrace && (
