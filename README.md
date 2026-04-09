@@ -19,6 +19,12 @@ and communicate pediatric gait-related concerns more consistently and earlier.
 └─────────────────────────┘     └─────────────────────────┘
 ```
 
+## Cloud Deployment
+
+- Vercel + AWS deployment guide: `docs/DEPLOY_VERCEL_AWS.md`
+- Vercel env template: `.env.vercel.example`
+- AWS backend env template: `.env.aws-backend.example`
+
 ## Quick Start
 
 ### Frontend (Next.js)

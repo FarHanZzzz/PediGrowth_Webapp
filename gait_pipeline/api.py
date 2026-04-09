@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -79,6 +80,17 @@ ALLOWED_MIME_TYPES = {"video/mp4", "video/quicktime"}
 MAX_VIDEO_BYTES = 100 * 1024 * 1024
 MIN_AGE_MONTHS = 36
 MAX_AGE_MONTHS = 216
+DEFAULT_ALLOWED_ORIGINS = (
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+)
+
+
+def _allowed_origins_from_env() -> List[str]:
+    raw = os.getenv("CORS_ALLOW_ORIGINS", "").strip()
+    if not raw:
+        return list(DEFAULT_ALLOWED_ORIGINS)
+    return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
 
 def _run_preflight(req: PreflightRequest) -> PreflightResponse:
@@ -181,14 +193,12 @@ def build_app(
     failure_log_path: Optional[str | Path] = None,
 ) -> FastAPI:
     app = FastAPI(title="Pedi-Growth Deterministic Gait API", version="0.1.0")
+    allowed_origins = _allowed_origins_from_env()
 
     # ── CORS: Allow frontend (Next.js) to call this API ──
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://localhost:3000",
-            "http://127.0.0.1:3000",
-        ],
+        allow_origins=allowed_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization"],
