@@ -26,6 +26,23 @@ function isMissingSharedPacketsTable(message: string): boolean {
   return normalized.includes('shared_packets') && normalized.includes('could not find the table');
 }
 
+function resolvePublicOrigin(request: Request): string {
+  const forwardedProto = request.headers.get('x-forwarded-proto');
+  const forwardedHost = request.headers.get('x-forwarded-host');
+  const host = request.headers.get('host');
+
+  if (forwardedProto && forwardedHost) {
+    return `${forwardedProto}://${forwardedHost}`;
+  }
+
+  if (host) {
+    const protocol = host.includes('localhost') || host.startsWith('127.0.0.1') ? 'http' : 'https';
+    return `${protocol}://${host}`;
+  }
+
+  return new URL(request.url).origin;
+}
+
 export async function POST(request: Request) {
   let body: ShareCreateBody;
 
@@ -97,7 +114,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 
-  const origin = new URL(request.url).origin;
+  const origin = resolvePublicOrigin(request);
   return NextResponse.json({
     shareUrl: `${origin}/share/${token}`,
     expiresAt,
