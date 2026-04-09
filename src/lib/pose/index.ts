@@ -3,6 +3,9 @@
 
 import type { PoseProvider, LandmarkFrame } from '@/lib/types';
 
+const MAX_ANALYSIS_DURATION_SECONDS = 20;
+const SEEK_TIMEOUT_MS = 2500;
+
 /**
  * Create a pose provider instance.
  * Currently only MediaPipe is supported.
@@ -39,14 +42,9 @@ export async function extractLandmarkSequence(
   const interval = 1 / targetFps;
   const sampleCount = Math.max(1, Math.floor(duration * targetFps));
 
-  for (let sampleIdx = 0; sampleIdx <= sampleCount; sampleIdx++) {
+  for (let sampleIdx = 0; sampleIdx < sampleCount; sampleIdx++) {
     const time = Math.min(sampleIdx * interval, duration);
-    video.currentTime = time;
-
-    // Wait for seek to complete
-    await new Promise<void>((resolve) => {
-      video.onseeked = () => resolve();
-    });
+    await seekVideo(video, time, SEEK_TIMEOUT_MS);
 
     const frame = await provider.extractFrame(video, time * 1000);
     frames.push(frame);
@@ -59,5 +57,41 @@ export function resolveExtractionDuration(videoDurationSeconds: number): number 
   if (!Number.isFinite(videoDurationSeconds) || videoDurationSeconds <= 0) {
     return 0;
   }
-  return videoDurationSeconds;
+  // Cap extraction window to keep browser-side analysis responsive on lower-end devices.
+  return Math.min(videoDurationSeconds, MAX_ANALYSIS_DURATION_SECONDS);
+}
+
+async function seekVideo(
+  video: HTMLVideoElement,
+  timeSeconds: number,
+  timeoutMs: number,
+): Promise<void> {
+  const duration = Number.isFinite(video.duration) ? video.duration : timeSeconds;
+  const clampedTime = Math.max(0, Math.min(timeSeconds, duration));
+
+  if (Math.abs(video.currentTime - clampedTime) < 0.001 && video.readyState >= 2) {
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    let done = false;
+
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      video.removeEventListener('seeked', onSeeked);
+      resolve();
+    };
+
+    const onSeeked = () => finish();
+    const timer = setTimeout(finish, timeoutMs);
+
+    video.addEventListener('seeked', onSeeked, { once: true });
+    try {
+      video.currentTime = clampedTime;
+    } catch {
+      finish();
+    }
+  });
 }

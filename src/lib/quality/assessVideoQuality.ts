@@ -10,6 +10,7 @@ import type { CameraAngle } from '@/lib/types';
 
 const QA_SAMPLE_FPS = 2; // Sample at 2fps for quality — faster than full extraction
 const MAX_SAMPLE_DURATION = 15; // Only sample first 15 seconds
+const SEEK_TIMEOUT_MS = 2500;
 
 /**
  * Run real video quality assessment.
@@ -56,7 +57,7 @@ export async function assessVideoQuality(
     const width = video.videoWidth;
     const height = video.videoHeight;
     const interval = 1 / QA_SAMPLE_FPS;
-    const totalSamples = Math.floor(duration * QA_SAMPLE_FPS);
+    const totalSamples = Math.max(1, Math.floor(duration * QA_SAMPLE_FPS));
 
     const samples: FrameQualitySample[] = [];
     const sampleFrames: LandmarkFrame[] = [];
@@ -65,11 +66,8 @@ export async function assessVideoQuality(
     for (let i = 0; i < totalSamples; i++) {
       const time = i * interval;
 
-      // Seek to time
-      video.currentTime = time;
-      await new Promise<void>((resolve) => {
-        video.onseeked = () => resolve();
-      });
+      // Seek to time with timeout fallback so one bad seek doesn't hang the pipeline.
+      await seekVideo(video, time, SEEK_TIMEOUT_MS);
 
       // Run pose detection
       const frame = await provider.extractFrame(video, time * 1000);
@@ -98,7 +96,7 @@ export async function assessVideoQuality(
           : null,
       });
 
-      onProgress?.(i / totalSamples);
+      onProgress?.((i + 1) / totalSamples);
     }
 
     // Compute aggregate quality metrics
@@ -173,6 +171,41 @@ export async function assessVideoQuality(
 function mean(values: number[]): number {
   if (values.length === 0) return 0;
   return values.reduce((a, b) => a + b, 0) / values.length;
+}
+
+async function seekVideo(
+  video: HTMLVideoElement,
+  timeSeconds: number,
+  timeoutMs: number,
+): Promise<void> {
+  const duration = Number.isFinite(video.duration) ? video.duration : timeSeconds;
+  const clampedTime = Math.max(0, Math.min(timeSeconds, duration));
+
+  if (Math.abs(video.currentTime - clampedTime) < 0.001 && video.readyState >= 2) {
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    let done = false;
+
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      video.removeEventListener('seeked', onSeeked);
+      resolve();
+    };
+
+    const onSeeked = () => finish();
+    const timer = setTimeout(finish, timeoutMs);
+
+    video.addEventListener('seeked', onSeeked, { once: true });
+    try {
+      video.currentTime = clampedTime;
+    } catch {
+      finish();
+    }
+  });
 }
 
 /**

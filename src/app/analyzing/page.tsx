@@ -80,6 +80,9 @@ export default function AnalyzingPage() {
       return;
     }
 
+    let settled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
     runAnalysisPipeline(
       sessionId,
       nickname,
@@ -100,6 +103,10 @@ export default function AnalyzingPage() {
       },
     )
       .then((result) => {
+        settled = true;
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
         const resultId = result.id;
         const serialized = JSON.stringify(result);
         // sessionStorage has a ~5MB limit; IndexedDB is the primary store
@@ -119,6 +126,10 @@ export default function AnalyzingPage() {
         }, 500);
       })
       .catch((err) => {
+        settled = true;
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
         console.error("Pipeline error:", err);
         setError(
           "Something went wrong during analysis. This may be a browser compatibility issue. " +
@@ -126,15 +137,21 @@ export default function AnalyzingPage() {
         );
       });
 
-    const timeout = setTimeout(() => {
+    timeoutId = setTimeout(() => {
+      if (settled) return;
       setError((existing) =>
         existing ??
         "Analysis is taking longer than expected. This may be due to video length or device performance. " +
           "Please try with a shorter video or on a different device."
       );
-    }, 120_000);
+    }, 300_000);
 
-    return () => clearTimeout(timeout);
+    return () => {
+      settled = true;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
   }, [router, analysisAttempt]);
 
   // Circular progress SVG math
