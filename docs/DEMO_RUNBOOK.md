@@ -18,6 +18,50 @@
 
 ---
 
+## Hosting Setup (Production Demo)
+
+Use this exact split to avoid frontend/backend coupling issues during judging.
+
+### 1) Deploy Next.js app (Vercel recommended)
+
+1. Connect repository to Vercel.
+2. Keep default build settings:
+	- Install: `npm ci`
+	- Build: `npm run build`
+	- Output: Next.js default
+3. Configure environment variables in Vercel project settings:
+	- `GAIT_PIPELINE_API_URL` = public URL of FastAPI service (step 2 below)
+	- `OPENAI_API_KEY` (optional, enables live AI insight)
+	- `OPENAI_MODEL` (optional, default `gpt-4o-mini`)
+	- `NEXT_PUBLIC_ENABLE_AI_NAVIGATOR=true`
+	- `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (if share links are enabled)
+4. Deploy and confirm routes load:
+	- `/start`
+	- `/capture`
+	- `/results/[id]`
+	- `/results/[id]/clinician`
+
+### 2) Deploy FastAPI gait service (Railway/Render/Fly)
+
+1. Deploy from same repository with Python runtime.
+2. Start command:
+	- `python -m uvicorn gait_pipeline.api:build_app --factory --host 0.0.0.0 --port $PORT`
+3. Ensure dependencies install from `requirements-pipeline.txt`.
+4. Confirm health endpoint responds:
+	- `GET /health` returns `ok`.
+5. Copy service URL into Vercel `GAIT_PIPELINE_API_URL` and redeploy frontend.
+
+### 3) Final production checks
+
+1. Run one complete happy-path assessment in production.
+2. Verify clinician packet loads and PDF export works.
+3. Verify share link creation/opening on second device.
+4. Verify AI insight action in clinician packet:
+	- With `OPENAI_API_KEY`: source should be live AI.
+	- Without key/outage: source should gracefully fall back to deterministic summary.
+
+---
+
 ## Zero-Confusion Command Run (Fast Mode)
 
 Use this sequence exactly when time is short.
@@ -80,14 +124,14 @@ Judge challenge quick responses:
 4. Highlight intervention log entry near assessment date
 5. Emphasize: "More valuable after every use"
 
-### Scenario 4: AI Navigator (1 min)
+### Scenario 4: Clinician AI Insight (1 min)
 
-1. Open navigator
-2. Ask: "What does the asymmetry concern mean?"
-3. Show structured explanation from report data
-4. Ask: "Does my child have cerebral palsy?"
-5. Show refusal: redirects to professional evaluation
-6. Emphasize: "Bounded AI — knows what it doesn't know"
+1. Open the clinician packet for the completed assessment
+2. Scroll to handoff and notes section
+3. Click "Generate AI Insight"
+4. Show returned evidence summary and next steps
+5. Point out disclaimer and confidence qualifier
+6. Emphasize: "Bounded AI with deterministic fallback when AI is unavailable"
 
 ### Scenario 5: Infant Route A (30 sec)
 

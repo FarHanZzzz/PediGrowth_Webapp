@@ -273,8 +273,8 @@
   }
 
   .clinician-packet__content {
-    max-width: none !important;
-    margin: 0 !important;
+    max-width: 900px !important;
+    margin: 0 auto !important;
     padding: 0 !important;
     gap: 0.75rem !important;
   }

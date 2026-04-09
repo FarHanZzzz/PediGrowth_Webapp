@@ -163,6 +163,7 @@ export default function ResultsPage() {
       assessmentId: result.id,
       nickname: result.session.nickname,
       ageMonths: result.session.ageMonths,
+      intakeContext: result.session.intakeContext,
       analyzedAt: result.analyzedAt,
       concerns: {
         asymmetry: result.concerns.asymmetry,
@@ -350,7 +351,7 @@ export default function ResultsPage() {
         </div>
       )}
 
-      <div className="mx-auto max-w-5xl space-y-5 px-4 py-6">
+      <div className="mx-auto max-w-6xl space-y-5 px-4 py-6">
         <div className="text-center space-y-3">
           <h1 data-display="true" className="text-3xl font-semibold">Walking Summary for {nickname}</h1>
           <p className="mx-auto max-w-2xl text-sm text-muted-foreground">
@@ -389,6 +390,11 @@ export default function ResultsPage() {
                     ? "No notable gait concern signals were detected in this clip."
                     : "This clip shows movement patterns worth reviewing more closely.")}
               </p>
+              {reportBundle?.caregiver.contextSignalText && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {reportBundle.caregiver.contextSignalText}
+                </p>
+              )}
             </div>
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">How certain this run is</p>

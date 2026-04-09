@@ -52,15 +52,36 @@ const CONCERN_DOMAINS = [
   { key: "pathDeviation", label: "Path deviation" },
 ] as const;
 
+type ClinicianTab = "snapshot" | "evidence" | "handoff";
+
+const CLINICIAN_TABS: Array<{ key: ClinicianTab; label: string }> = [
+  { key: "snapshot", label: "Snapshot" },
+  { key: "evidence", label: "Advanced Evidence" },
+  { key: "handoff", label: "Handoff & Notes" },
+];
+
+interface AiInsightResponse {
+  success: boolean;
+  source: "ai" | "fallback";
+  insightSummary: string;
+  nextSteps: string[];
+  confidenceQualifier: string;
+  disclaimer: string;
+}
+
 export default function ClinicianResultPage() {
   const params = useParams();
   const router = useRouter();
   const resultId = params.id as string;
   const noteStorageKey = `gaitbridge_clinician_note_${resultId}`;
 
+  const [activeTab, setActiveTab] = useState<ClinicianTab>("snapshot");
   const [jumpToFrameIndex, setJumpToFrameIndex] = useState<number | null>(null);
   const [currentEvidenceFrameIndex, setCurrentEvidenceFrameIndex] = useState<number | null>(null);
   const [isTier1FrameSyncLocked, setIsTier1FrameSyncLocked] = useState(true);
+  const [aiInsight, setAiInsight] = useState<AiInsightResponse | null>(null);
+  const [isGeneratingAiInsight, setIsGeneratingAiInsight] = useState(false);
+  const [aiInsightError, setAiInsightError] = useState<string | null>(null);
   const [clinicianNote, setClinicianNote] = useState(() => {
     if (typeof window === "undefined") {
       return "";
@@ -206,6 +227,22 @@ export default function ClinicianResultPage() {
     reportIntakeContext.correctedAge,
     sessionIntakeContext.correctedAge,
   );
+  const intakeContextRows = [
+    { label: "Caregiver main concern", value: caregiverMainConcern },
+    { label: "First noticed / duration", value: symptomDuration },
+    { label: "Falls frequency", value: fallsFrequency },
+    { label: "Recent therapy changes", value: recentTherapyChanges },
+    {
+      label: "Recent surgery/intervention changes",
+      value: recentSurgeryInterventionChanges,
+    },
+    { label: "Assistive device / walking support", value: assistiveDeviceSupport },
+    { label: "Prior diagnosis / specialist review", value: priorDiagnosisOrSpecialistReview },
+    { label: "Corrected age (if provided)", value: correctedAge },
+  ];
+  const hasIntakeContext = intakeContextRows.some(
+    (entry) => entry.value !== notCapturedInWorkflow,
+  );
 
   const packetTimestamp = result.analyzedAt ?? result.run.analyzedAt;
   const canShowTier1ThreeD =
@@ -349,6 +386,77 @@ export default function ClinicianResultPage() {
     setShareLinkStatus("Clipboard access was unavailable, so the link was shown for manual copy.");
   };
 
+  const handleGenerateAiInsight = async () => {
+    if (isGeneratingAiInsight) {
+      return;
+    }
+
+    setIsGeneratingAiInsight(true);
+    setAiInsightError(null);
+
+    try {
+      const metricSnapshot = Object.entries(result.features)
+        .slice(0, 8)
+        .map(([name, metric]) => ({
+          name,
+          value: metric.suppressed ? null : metric.value,
+          confidencePct: metric.suppressed ? 0 : Math.round(metric.confidence * 100),
+          limitedReason: metric.limitedReason ?? null,
+        }));
+
+      const response = await fetch("/api/navigator/insight", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          assessmentId: result.id,
+          profile: {
+            nickname: result.session.nickname,
+            ageMonths: result.session.ageMonths,
+          },
+          concernSummary: {
+            overallLevel: result.concerns.overallLevel,
+            followupPriority: result.concerns.followupPriority,
+            assessedDomains: result.concerns.assessedDomains,
+            suppressedDomains: result.concerns.suppressedDomains,
+            qualityWarning: result.concerns.qualityWarning,
+          },
+          qualitySummary: {
+            result: result.quality.result,
+            confidenceNotes: result.quality.confidenceNotes,
+            failureReasons: result.quality.failureReasons,
+            borderlineReasons: result.quality.borderlineReasons,
+          },
+          intakeContext: {
+            caregiverMainConcern,
+            symptomDuration,
+            fallsFrequency,
+          },
+          metricSnapshot,
+        }),
+      });
+
+      const body = (await response.json()) as AiInsightResponse & { error?: string };
+
+      if (!response.ok || !body.success) {
+        throw new Error(body.error ?? "Unable to generate insight right now.");
+      }
+
+      setAiInsight({
+        success: true,
+        source: body.source,
+        insightSummary: body.insightSummary,
+        nextSteps: body.nextSteps,
+        confidenceQualifier: body.confidenceQualifier,
+        disclaimer: body.disclaimer,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to generate insight right now.";
+      setAiInsightError(message);
+    } finally {
+      setIsGeneratingAiInsight(false);
+    }
+  };
+
   return (
     <div className="clinician-packet min-h-dvh bg-linear-to-b from-background to-muted/30">
       {isBestEffort && (
@@ -359,7 +467,7 @@ export default function ClinicianResultPage() {
         </div>
       )}
 
-      <div className="clinician-packet__content mx-auto max-w-5xl space-y-4 px-4 py-6">
+      <div className="clinician-packet__content mx-auto max-w-6xl space-y-4 px-4 py-6">
         <div className="space-y-2">
           <div className="print-hidden inline-flex items-center rounded-xl border border-border/60 bg-surface-container-low p-1">
             <button
@@ -382,7 +490,26 @@ export default function ClinicianResultPage() {
           <p className="text-sm text-muted-foreground">
             Decision-first summary for clinical review. Advanced evidence is collapsed in section 7.
           </p>
+
+          <div className="print-hidden inline-flex w-full max-w-lg items-center rounded-xl border border-border/60 bg-surface-container-low p-1">
+            {CLINICIAN_TABS.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveTab(tab.key)}
+                className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                  activeTab === tab.key
+                    ? "bg-surface-container-lowest text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
+
+        <div className={activeTab === "snapshot" ? "space-y-4" : "hidden print:block print:space-y-4"}>
 
         <Card className="print-section">
           <CardHeader className="pb-2">
@@ -469,30 +596,19 @@ export default function ClinicianResultPage() {
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                   Clinical context from intake
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Caregiver main concern: {caregiverMainConcern}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  First noticed / duration: {symptomDuration}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Falls frequency: {fallsFrequency}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Recent therapy changes: {recentTherapyChanges}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Recent surgery/intervention changes: {recentSurgeryInterventionChanges}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Assistive device / walking support: {assistiveDeviceSupport}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Prior diagnosis / specialist review: {priorDiagnosisOrSpecialistReview}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Corrected age (if provided): {correctedAge}
-                </p>
+                {hasIntakeContext ? (
+                  intakeContextRows
+                    .filter((entry) => entry.value !== notCapturedInWorkflow)
+                    .map((entry) => (
+                      <p key={entry.label} className="mt-1 text-xs text-muted-foreground">
+                        {entry.label}: {entry.value}
+                      </p>
+                    ))
+                ) : (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    No optional clinician context was captured during intake.
+                  </p>
+                )}
               </div>
             </div>
 
@@ -706,7 +822,9 @@ export default function ClinicianResultPage() {
           </CardContent>
         </Card>
 
-        <Card className="print-section print-hidden">
+        </div>
+
+        <Card className={`print-section print-hidden ${activeTab === "evidence" ? "" : "hidden"}`}>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm">
               <Video className="h-4 w-4" />
@@ -851,11 +969,47 @@ export default function ClinicianResultPage() {
           </CardContent>
         </Card>
 
-        <Card className="print-section print-hidden">
+        <Card className={`print-section print-hidden ${activeTab === "handoff" ? "" : "hidden"}`}>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">9. Handoff Actions</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
+            <div className="rounded-lg border bg-muted/20 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Evidence-grounded AI insight
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-2 text-xs"
+                  onClick={handleGenerateAiInsight}
+                  disabled={isGeneratingAiInsight}
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  {isGeneratingAiInsight ? "Generating insight..." : "Generate AI insight"}
+                </Button>
+              </div>
+              {aiInsightError && <p className="mt-2 text-xs text-destructive">{aiInsightError}</p>}
+              {aiInsight && (
+                <div className="mt-2 space-y-2 rounded-md border bg-background p-2.5 text-xs text-muted-foreground">
+                  <p className="font-medium text-foreground">{aiInsight.insightSummary}</p>
+                  <p className="text-[11px] uppercase tracking-wide">
+                    Source: {aiInsight.source === "ai" ? "Live AI" : "Deterministic fallback"}
+                  </p>
+                  {aiInsight.nextSteps.length > 0 && (
+                    <ul className="list-disc space-y-1 pl-4">
+                      {aiInsight.nextSteps.map((step) => (
+                        <li key={step}>{step}</li>
+                      ))}
+                    </ul>
+                  )}
+                  <p>{aiInsight.confidenceQualifier}</p>
+                  <p className="text-[11px]">{aiInsight.disclaimer}</p>
+                </div>
+              )}
+            </div>
+
             <p className="text-xs text-muted-foreground">
               Use these controls to complete sharing and documentation.
             </p>
@@ -948,7 +1102,7 @@ export default function ClinicianResultPage() {
           </CardContent>
         </Card>
 
-        <Card className="print-section">
+        <Card className={`print-section ${activeTab === "handoff" ? "" : "hidden print:block"}`}>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">10. Clinician Note (local)</CardTitle>
           </CardHeader>

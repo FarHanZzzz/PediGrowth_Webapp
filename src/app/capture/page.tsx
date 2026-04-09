@@ -525,7 +525,7 @@ export default function CapturePage() {
 
   return (
     <div className="min-h-[calc(100dvh-9rem)] bg-linear-to-b from-background to-muted/30 px-4 py-6 sm:px-6">
-      <div className="mx-auto max-w-xl med-slide-up">
+      <div className="mx-auto max-w-2xl med-slide-up">
         {/* Header */}
         <div className="mb-4 rounded-2xl border border-border/60 bg-card/70 p-4 text-center">
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">

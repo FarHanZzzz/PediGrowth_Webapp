@@ -224,6 +224,7 @@ export interface CaregiverReport {
   id: string;
   assessmentId: string;
   observationsText: string;
+  contextSignalText?: string | null;
   confidenceText: string;
   limitationsText: string;
   monitoringGuidance: string;

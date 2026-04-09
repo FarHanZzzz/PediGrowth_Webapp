@@ -116,6 +116,33 @@ function followupGuidance(priority: string): string {
   }
 }
 
+function clipContextText(value: string): string {
+  return value.length > 140 ? `${value.slice(0, 137)}...` : value;
+}
+
+function buildCaregiverContextSignal(input?: IntakeContextSnapshot): string | null {
+  const mainConcern = normalizeContextField(input?.caregiverMainConcern);
+  const duration = normalizeContextField(input?.symptomDuration);
+  const falls = normalizeContextField(input?.fallsFrequency);
+
+  if (!mainConcern && !duration && !falls) {
+    return null;
+  }
+
+  const parts: string[] = [];
+  if (mainConcern) {
+    parts.push(`Caregiver concern: ${clipContextText(mainConcern)}.`);
+  }
+  if (duration) {
+    parts.push(`First noticed: ${clipContextText(duration)}.`);
+  }
+  if (falls) {
+    parts.push(`Falls frequency reported: ${clipContextText(falls)}.`);
+  }
+
+  return enforceSafeLanguage(parts.join(" "));
+}
+
 function buildMetricTable(features: Record<string, FeatureMetric>): Record<string, unknown> {
   const formatted: Record<string, unknown> = {};
 
@@ -176,6 +203,7 @@ function buildHandoffText(
 export function buildReportBundle(input: BuildReportBundleInput): ReportBundle {
   const createdAt = input.analyzedAt;
   const observationText = enforceSafeLanguage(overallObservation(input.concerns.overallLevel));
+  const contextSignalText = buildCaregiverContextSignal(input.intakeContext);
 
   const confidenceText = enforceSafeLanguage(
     input.quality.confidenceNotes ||
@@ -205,6 +233,7 @@ export function buildReportBundle(input: BuildReportBundleInput): ReportBundle {
     id: `cr_${input.assessmentId}`,
     assessmentId: input.assessmentId,
     observationsText: observationText,
+    contextSignalText,
     confidenceText,
     limitationsText,
     monitoringGuidance,

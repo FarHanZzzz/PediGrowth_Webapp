@@ -144,7 +144,7 @@ export default function QuickGatePage() {
       <div className="absolute top-[-10%] right-[-5%] w-100 h-100 rounded-full bg-primary/10 blur-[100px] pointer-events-none" />
       <div className="absolute bottom-[-10%] left-[-5%] w-75 h-75 rounded-full bg-accent/10 blur-[100px] pointer-events-none" />
 
-      <div className="relative z-10 mx-auto w-full max-w-md med-slide-up">
+      <div className="relative z-10 mx-auto w-full max-w-lg med-slide-up">
         {/* Header */}
         <div className="mb-8 text-center">
           <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
