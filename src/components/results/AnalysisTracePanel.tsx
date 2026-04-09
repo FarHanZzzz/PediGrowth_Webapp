@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { AnalysisTrace } from "@/lib/trace/traceTypes";
 import type { ConcernEvidence } from "@/lib/trace/summarizeDetectionPath";
+import { CONCERN_BADGE_STYLES, toConcernLevel } from "@/lib/presentation/severity";
 
 interface Props {
   trace: AnalysisTrace;
@@ -217,51 +218,49 @@ export default function AnalysisTracePanel({ trace, concernEvidence }: Props) {
         </CardHeader>
         {openSection === "evidence" && (
           <CardContent className="pt-3 space-y-3">
-            {concernEvidence.map((ev) => (
-              <div
-                key={ev.domain}
-                className="border border-border/30 rounded-lg p-3 space-y-1.5"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">
-                    {ev.displayName}
-                  </span>
-                  <Badge
-                    variant="outline"
-                    className={`text-[9px] ${
-                      ev.level === "none"
-                        ? "text-green-600 border-green-200"
-                        : ev.level === "mild"
-                        ? "text-amber-600 border-amber-200"
-                        : "text-red-600 border-red-200"
-                    }`}
-                  >
-                    {ev.level}
-                  </Badge>
-                </div>
-                <p className="text-sm text-foreground/80">
-                  {ev.explanation}
-                </p>
-                <div className="flex gap-2 text-xs text-muted-foreground">
-                  <span>Signal: {ev.signalDescription}</span>
-                </div>
-                <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                  <span>Frames: {ev.frameRange}</span>
-                  <span>·</span>
-                  <span>{ev.frameCount} frames used</span>
-                  <span>·</span>
-                  <span>
-                    {Math.round(ev.confidence * 100)}% confidence
-                  </span>
-                </div>
-                {ev.missingInfo && (
-                  <p className="mt-1 flex items-start gap-1 text-xs text-amber-600">
-                    <AlertTriangle className="h-3 w-3 flex-shrink-0 mt-0.5" />
-                    {ev.missingInfo}
+            {concernEvidence.map((ev) => {
+              const concernLevel = toConcernLevel(ev.level);
+
+              return (
+                <div
+                  key={ev.domain}
+                  className="border border-border/30 rounded-lg p-3 space-y-1.5"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">
+                      {ev.displayName}
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className={`text-[9px] ${CONCERN_BADGE_STYLES[concernLevel]}`}
+                    >
+                      {concernLevel}
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-foreground/80">
+                    {ev.explanation}
                   </p>
-                )}
-              </div>
-            ))}
+                  <div className="flex gap-2 text-xs text-muted-foreground">
+                    <span>Signal: {ev.signalDescription}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                    <span>Frames: {ev.frameRange}</span>
+                    <span>·</span>
+                    <span>{ev.frameCount} frames used</span>
+                    <span>·</span>
+                    <span>
+                      {Math.round(ev.confidence * 100)}% confidence
+                    </span>
+                  </div>
+                  {ev.missingInfo && (
+                    <p className="mt-1 flex items-start gap-1 text-xs text-amber-600">
+                      <AlertTriangle className="h-3 w-3 flex-shrink-0 mt-0.5" />
+                      {ev.missingInfo}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
           </CardContent>
         )}
       </Card>

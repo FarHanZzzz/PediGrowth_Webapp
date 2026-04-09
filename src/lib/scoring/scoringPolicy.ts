@@ -20,7 +20,7 @@ export const MIN_CONCERN_CONFIDENCE = 0.3;
 export const BEST_EFFORT_CONCERN_CAP = 'mild' as const;
 
 /**
- * In best-effort mode, follow-up priority is CAPPED at this level.
+ * In very low-confidence best-effort mode, follow-up priority is capped at this level.
  */
 export const BEST_EFFORT_PRIORITY_CAP = 'routine' as const;
 

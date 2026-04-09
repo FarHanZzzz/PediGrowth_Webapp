@@ -7,6 +7,7 @@ import {
   getRunLabel,
   type RunProvenance,
 } from "@/lib/session/runProvenance";
+import { RUN_TONE_BADGE_STYLES } from "@/lib/presentation/severity";
 
 interface Props {
   run: RunProvenance;
@@ -14,12 +15,7 @@ interface Props {
 
 export default function RunProvenanceBadge({ run }: Props) {
   const tone = classifyRunTone(run.classification);
-  const styles =
-    tone === "success"
-      ? "border-green-200 bg-green-50 text-green-700"
-      : tone === "warning"
-        ? "border-amber-200 bg-amber-50 text-amber-700"
-        : "border-red-200 bg-red-50 text-red-700";
+  const styles = RUN_TONE_BADGE_STYLES[tone];
 
   const Icon =
     run.classification === "real_analysis"

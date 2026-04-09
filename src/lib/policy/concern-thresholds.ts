@@ -146,20 +146,25 @@ export function scoreConcerns(
     pathDeviationLevel,
   ];
 
-  // Determine follow-up priority
+  // Determine follow-up priority.
+  // Quality warnings should reduce confidence language, not hide urgent concern signals.
+  const significantCount = countSignificant(levels);
+  const hasSignificant = hasAnyAtLevel(levels, 'significant');
+  const hasModerate = hasAnyAtLevel(levels, 'moderate');
+
   let followupPriority: FollowupPriority;
-  if (qualityWarning) {
-    followupPriority = 'routine';
-  } else if (countSignificant(levels) >= 2) {
+  if (significantCount >= 2 || progressionStatus === 'worsening') {
     followupPriority = 'specialist';
-  } else if (progressionStatus === 'worsening') {
-    followupPriority = 'specialist';
-  } else if (hasAnyAtLevel(levels, 'moderate')) {
+  } else if (hasSignificant || hasModerate) {
     followupPriority = 'earlier_review';
-  } else if (hasAnyAtLevel(levels, 'mild')) {
-    followupPriority = 'routine';
   } else {
     followupPriority = 'routine';
+  }
+
+  if (qualityWarning && followupPriority !== 'routine') {
+    downgradeReasons.push(
+      'Follow-up urgency reflects concern severity, but confidence is reduced by recording quality.'
+    );
   }
 
   return {

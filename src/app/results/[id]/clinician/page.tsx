@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
+  AlertTriangle,
   ArrowLeft,
   Copy,
   Download,
@@ -27,20 +28,16 @@ import {
   formatDomainLabel,
   useResultViewModel,
 } from "@/lib/results/resultViewModel";
-
-const CONCERN_LABELS: Record<string, string> = {
-  none: "None observed",
-  mild: "Mild observation",
-  moderate: "Moderate observation",
-  significant: "Significant observation",
-};
-
-const CONCERN_BADGE_STYLES: Record<string, string> = {
-  none: "bg-green-50 text-green-700 border-green-200",
-  mild: "bg-amber-50 text-amber-700 border-amber-200",
-  moderate: "bg-orange-50 text-orange-700 border-orange-200",
-  significant: "bg-red-50 text-red-700 border-red-200",
-};
+import {
+  CONCERN_BADGE_STYLES,
+  CONCERN_LABELS,
+  FOLLOWUP_BADGE_STYLES,
+  FOLLOWUP_CALLOUT_STYLES,
+  FOLLOWUP_CALLOUT_TEXT,
+  FOLLOWUP_LABELS,
+  toConcernLevel,
+  toFollowupPriority,
+} from "@/lib/presentation/severity";
 
 const CONCERN_DOMAINS = [
   { key: "asymmetry", label: "Asymmetry" },
@@ -127,8 +124,10 @@ export default function ClinicianResultPage() {
     return <ResultGuardState result={result} />;
   }
 
-  const overallConcernLabel =
-    CONCERN_LABELS[result.concerns.overallLevel] ?? formatDomainLabel(result.concerns.overallLevel);
+  const overallConcernLevel = toConcernLevel(result.concerns.overallLevel);
+  const overallConcernLabel = CONCERN_LABELS[overallConcernLevel];
+  const followUpPriority = toFollowupPriority(result.concerns.followupPriority);
+  const followUpRecommendation = FOLLOWUP_LABELS[followUpPriority];
   const assessedDomains = result.concerns.assessedDomains.map(formatDomainLabel);
   const suppressedDomains = result.concerns.suppressedDomains.map(formatDomainLabel);
   const assessedDomainsSummary = assessedDomains.length > 0 ? assessedDomains.join(", ") : "None";
@@ -191,7 +190,6 @@ export default function ClinicianResultPage() {
     result.concerns.overallLevel === "none"
       ? "No clear concern pattern was detected in this recording."
       : `${formatDomainLabel(result.concerns.overallLevel)} concern pattern observed in this recording.`;
-  const followUpRecommendation = formatDomainLabel(result.concerns.followupPriority);
   const evidenceHighlights = concernEvidence
     .filter((entry) => !result.concerns.suppressedDomains.includes(entry.domain))
     .slice(0, 4);
@@ -225,7 +223,7 @@ export default function ClinicianResultPage() {
       return {
         domainLabel: domain.label,
         statusLabel: "Assessed with caution",
-        statusClass: "bg-amber-50 text-amber-700 border-amber-200",
+        statusClass: "bg-orange-100 text-orange-900 border-orange-300",
         reason,
       };
     }
@@ -302,14 +300,17 @@ export default function ClinicianResultPage() {
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-lg border bg-muted/20 p-3">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Overall signal</p>
-                <Badge variant="outline" className={`mt-2 text-[10px] ${CONCERN_BADGE_STYLES[result.concerns.overallLevel] ?? ""}`}>
+                <Badge variant="outline" className={`mt-2 text-[10px] ${CONCERN_BADGE_STYLES[overallConcernLevel]}`}>
                   {overallConcernLabel}
                 </Badge>
               </div>
 
               <div className="rounded-lg border bg-muted/20 p-3">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Follow-up priority</p>
-                <p className="mt-1 text-sm font-medium">{followUpRecommendation}</p>
+                <Badge variant="outline" className={`mt-2 text-[10px] ${FOLLOWUP_BADGE_STYLES[followUpPriority]}`}>
+                  {followUpRecommendation}
+                </Badge>
+                <p className="mt-2 text-xs text-muted-foreground">{FOLLOWUP_CALLOUT_TEXT[followUpPriority]}</p>
               </div>
 
               <div className="rounded-lg border bg-muted/20 p-3">
@@ -331,6 +332,20 @@ export default function ClinicianResultPage() {
             <div className="rounded-lg border bg-muted/20 p-3">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Interpretation at a glance</p>
               <p className="mt-1 text-sm">{observedSummary}</p>
+            </div>
+
+            <div
+              className={`rounded-lg border p-3 ${FOLLOWUP_CALLOUT_STYLES[followUpPriority]}`}
+              role={followUpPriority === "specialist" ? "alert" : undefined}
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-wide">Urgency signal</p>
+              <div className="mt-1 flex items-start gap-2 text-sm">
+                <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                <div>
+                  <p className="font-semibold">{followUpRecommendation}</p>
+                  <p className="text-xs">{FOLLOWUP_CALLOUT_TEXT[followUpPriority]}</p>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -416,7 +431,7 @@ export default function ClinicianResultPage() {
           <CardContent className="space-y-4">
             <div className="space-y-3">
               {CONCERN_DOMAINS.map((domain) => {
-                const level = result.concerns[domain.key];
+                const level = toConcernLevel(result.concerns[domain.key]);
                 const evidence = evidenceByDomain.get(domain.key);
                 const isSuppressed = result.concerns.suppressedDomains.includes(domain.key);
 
@@ -424,8 +439,15 @@ export default function ClinicianResultPage() {
                   <div key={domain.key} className="rounded-lg border p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="text-sm font-medium">{domain.label}</p>
-                      <Badge variant="outline" className={`text-[10px] ${CONCERN_BADGE_STYLES[level] ?? ""}`}>
-                        {isSuppressed ? "Not assessed" : CONCERN_LABELS[level] ?? level}
+                      <Badge
+                        variant="outline"
+                        className={`text-[10px] ${
+                          isSuppressed
+                            ? "border-amber-300 bg-amber-100 text-amber-900"
+                            : CONCERN_BADGE_STYLES[level]
+                        }`}
+                      >
+                        {isSuppressed ? "Not assessed" : CONCERN_LABELS[level]}
                       </Badge>
                     </div>
                     <p className="mt-2 text-xs text-muted-foreground">

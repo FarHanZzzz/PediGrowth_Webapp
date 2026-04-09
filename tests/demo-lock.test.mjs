@@ -26,7 +26,7 @@ test('buildRunProvenance defaults to an honest real-analysis record', () => {
   assert.equal(provenance.sourceType, 'manifest_hero');
   assert.equal(provenance.sourceClipId, 'toward_good');
   assert.equal(provenance.exportArtifactPath, '/demo/exports/toward_good-annotated.mp4');
-  assert.equal(getRunLabel(provenance.classification), 'Real analysis');
+  assert.equal(getRunLabel(provenance.classification), 'REAL ANALYSIS');
 });
 
 test('hero manifest is canonical and blocks approval until a real clip exists', () => {

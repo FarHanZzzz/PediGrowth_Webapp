@@ -2,6 +2,8 @@
 // Generates a printable clinical report view and triggers browser print dialog.
 // No external dependency required — uses the print stylesheet in globals.css.
 
+import { CONCERN_HEX_COLORS, CONCERN_LABELS, isConcernLevel } from "@/lib/presentation/severity";
+
 export interface PDFExportData {
   childNickname: string;
   ageMonths: number;
@@ -29,19 +31,20 @@ export function exportReportAsPDF(data: PDFExportData): void {
   }
 
   const concernRows = Object.entries(data.concerns)
+    .filter(([, level]) => typeof level === "string" && isConcernLevel(level))
     .map(([domain, level]) => {
-      const color = level === "none" ? "#4CAF50"
-        : level === "mild" ? "#FFC107"
-        : level === "moderate" ? "#FF9800"
-        : "#F44336";
+      const concernLevel = isConcernLevel(level) ? level : "none";
+      const color = CONCERN_HEX_COLORS[concernLevel];
+      const label = CONCERN_LABELS[concernLevel];
+
       return `<tr>
         <td style="padding: 8px; border-bottom: 1px solid #eee; text-transform: capitalize;">${domain.replace(/([A-Z])/g, ' $1').trim()}</td>
         <td style="padding: 8px; border-bottom: 1px solid #eee;">
-          <span style="display:inline-block; padding: 2px 10px; border-radius: 12px; background: ${color}22; color: ${color}; font-weight: 600; font-size: 12px; text-transform: uppercase;">${level}</span>
+          <span style="display:inline-block; padding: 2px 10px; border-radius: 12px; background: ${color}22; color: ${color}; font-weight: 600; font-size: 12px;">${label}</span>
         </td>
       </tr>`;
     })
-    .join("");
+    .join("") || `<tr><td style="padding: 8px; border-bottom: 1px solid #eee;" colspan="2">No concern-level domains were available for this export.</td></tr>`;
 
   const metricRows = Object.entries(data.metrics)
     .filter(([key]) => !data.suppressedMetrics?.includes(key))

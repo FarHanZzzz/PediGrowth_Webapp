@@ -16,6 +16,12 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  CONCERN_LABELS,
+  FOLLOWUP_BADGE_STYLES,
+  RUN_TONE_BADGE_STYLES,
+  toConcernLevel,
+} from "@/lib/presentation/severity";
 
 type HistoryStatus = "stable" | "follow_up" | "retake";
 
@@ -31,7 +37,31 @@ interface HistoryRow {
   routeLabel: string;
 }
 
-function deriveStatus(result: any): HistoryStatus {
+interface StoredResultSummary {
+  run?: {
+    classification?: string;
+  };
+  assessmentMode?: string;
+  quality?: {
+    result?: string;
+  };
+  concerns?: {
+    overallLevel?: string;
+    viewLabel?: string;
+  };
+  trace?: {
+    pipeline?: {
+      direction?: string;
+    };
+  };
+  session?: {
+    nickname?: string;
+    ageMonths?: number;
+  };
+  analyzedAt?: string;
+}
+
+function deriveStatus(result: StoredResultSummary): HistoryStatus {
   if (result?.run?.classification === "validation_failure") {
     return "retake";
   }
@@ -116,7 +146,7 @@ function statusMeta(status: HistoryStatus) {
   if (status === "stable") {
     return {
       label: "Stable",
-      className: "bg-green-50 text-green-700 border-green-200",
+      className: FOLLOWUP_BADGE_STYLES.routine,
       icon: CheckCircle2,
     };
   }
@@ -124,24 +154,21 @@ function statusMeta(status: HistoryStatus) {
   if (status === "follow_up") {
     return {
       label: "Follow-Up",
-      className: "bg-amber-50 text-amber-700 border-amber-200",
+      className: FOLLOWUP_BADGE_STYLES.earlier_review,
       icon: AlertTriangle,
     };
   }
 
   return {
     label: "Retake Recommended",
-    className: "bg-rose-50 text-rose-700 border-rose-200",
+    className: RUN_TONE_BADGE_STYLES.destructive,
     icon: RefreshCw,
   };
 }
 
 function humanConcern(level: string): string {
-  if (level === "none") return "None observed";
-  if (level === "mild") return "Mild observation";
-  if (level === "moderate") return "Moderate observation";
-  if (level === "significant") return "Significant observation";
-  return level;
+  const normalized = toConcernLevel(level);
+  return CONCERN_LABELS[normalized];
 }
 
 export default function HistoryPage() {

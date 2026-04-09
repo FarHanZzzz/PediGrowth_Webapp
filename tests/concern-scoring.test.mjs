@@ -31,6 +31,22 @@ function getConcernLevel(value, thresholds, confidence = 1.0) {
   return level;
 }
 
+function computeFollowupPriority(levels, progressionStatus = "stable") {
+  const significantCount = levels.filter((level) => level === "significant").length;
+  const hasSignificant = levels.some((level) => level === "significant");
+  const hasModerate = levels.some((level) => level === "moderate");
+
+  if (significantCount >= 2 || progressionStatus === "worsening") {
+    return "specialist";
+  }
+
+  if (hasSignificant || hasModerate) {
+    return "earlier_review";
+  }
+
+  return "routine";
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const thresholdPath = path.resolve(__dirname, "../src/lib/policy/concern-thresholds.json");
@@ -165,6 +181,28 @@ describe("Concern Scoring", () => {
         assert.ok(thresholds.moderate > thresholds.mild, `${name}: moderate > mild`);
         assert.ok(thresholds.significant > thresholds.moderate, `${name}: significant > moderate`);
       }
+    });
+  });
+
+  describe("Follow-up Priority Precedence", () => {
+    it("keeps specialist priority for multi-significant concern pattern", () => {
+      const priority = computeFollowupPriority(["significant", "significant", "mild", "none"]);
+      assert.equal(priority, "specialist");
+    });
+
+    it("assigns earlier review when moderate concern is present", () => {
+      const priority = computeFollowupPriority(["moderate", "none", "none", "none"]);
+      assert.equal(priority, "earlier_review");
+    });
+
+    it("keeps specialist routing when progression status is worsening", () => {
+      const priority = computeFollowupPriority(["mild", "mild", "none", "none"], "worsening");
+      assert.equal(priority, "specialist");
+    });
+
+    it("returns routine for low-severity concern pattern", () => {
+      const priority = computeFollowupPriority(["mild", "none", "none", "none"]);
+      assert.equal(priority, "routine");
     });
   });
 });

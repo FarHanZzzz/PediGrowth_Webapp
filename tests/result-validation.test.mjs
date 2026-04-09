@@ -50,6 +50,22 @@ function classifyConcern(value, thresholds, confidence = 1.0) {
   return level;
 }
 
+function computeFollowupPriority(levels, progressionStatus = "stable") {
+  const significantCount = levels.filter((level) => level === "significant").length;
+  const hasSignificant = levels.some((level) => level === "significant");
+  const hasModerate = levels.some((level) => level === "moderate");
+
+  if (significantCount >= 2 || progressionStatus === "worsening") {
+    return "specialist";
+  }
+
+  if (hasSignificant || hasModerate) {
+    return "earlier_review";
+  }
+
+  return "routine";
+}
+
 // ══════════════════════════════════════════════════════════════════
 // TEST SUITES
 // ══════════════════════════════════════════════════════════════════
@@ -238,5 +254,25 @@ describe("Normalization Divisor Calibration", () => {
     const divisor = normativeRefs.pathDeviation.normalizationDivisor;
     const score = Math.min(1, normalResidualSD / divisor);
     assert.ok(score < 0.25, `Normal path deviation should be <0.25, got ${score.toFixed(3)}`);
+  });
+});
+
+describe("Follow-Up Routing Regression", () => {
+  it("does not collapse severe patterns to routine when quality is borderline", () => {
+    const levels = ["significant", "moderate", "none", "none"];
+    const priority = computeFollowupPriority(levels);
+    assert.equal(priority, "earlier_review");
+  });
+
+  it("keeps specialist routing for two significant concern domains", () => {
+    const levels = ["significant", "significant", "mild", "none"];
+    const priority = computeFollowupPriority(levels);
+    assert.equal(priority, "specialist");
+  });
+
+  it("keeps specialist routing on worsening progression even with mild levels", () => {
+    const levels = ["mild", "mild", "none", "none"];
+    const priority = computeFollowupPriority(levels, "worsening");
+    assert.equal(priority, "specialist");
   });
 });

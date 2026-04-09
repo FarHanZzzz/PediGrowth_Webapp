@@ -5,7 +5,7 @@
 // priority is capped at 'routine'. This prevents overconfident escalation
 // from noisy, low-quality input while still providing useful partial results.
 
-import type { GaitFeatureSet, ConcernLevel, AssessmentMode } from '@/lib/types';
+import type { GaitFeatureSet, ConcernLevel, AssessmentMode, FollowupPriority } from '@/lib/types';
 import { scoreConcerns } from '@/lib/policy/concern-thresholds';
 import type { VideoQualityAssessment } from '@/lib/quality/qualityTypes';
 import {
@@ -116,11 +116,17 @@ export function computeConcernProfile(
     assessedDomains.push('pathDeviation');
   }
 
-  // Best-effort cap: relax to allow 'moderate' for genuine patient signals.
-  // Capping everything at 'mild' hides real pathology from clinicians.
-  // Only cap at 'mild' if confidence is VERY low (< 0.25).
+  // Best-effort cap policy.
+  // - Very low confidence: cap at mild.
+  // - Limited confidence: cap at moderate.
+  // - Adequate confidence: allow full concern range.
   const isVeryLowConfidence = confMultiplier < 0.25;
-  const concernCap = isVeryLowConfidence ? BEST_EFFORT_CONCERN_CAP : 'moderate';
+  const concernCap: ConcernLevel =
+    isVeryLowConfidence
+      ? BEST_EFFORT_CONCERN_CAP
+      : confMultiplier < 0.55
+        ? 'moderate'
+        : 'significant';
 
   if (isBestEffort) {
     asymmetry = capConcern(asymmetry, concernCap);
@@ -137,11 +143,23 @@ export function computeConcernProfile(
     levels.includes('mild') ? 'mild' :
     'none';
 
-  // Follow-up priority (capped in best-effort)
-  let followupPriority = profile.followupPriority;
-  if (isBestEffort && followupPriority !== 'routine') {
-    followupPriority = BEST_EFFORT_PRIORITY_CAP;
+  // Follow-up priority capping in best-effort mode.
+  // Keep urgent routing visible when signal confidence is adequate.
+  let followupPriority: FollowupPriority = profile.followupPriority;
+  if (isBestEffort) {
+    if (isVeryLowConfidence) {
+      followupPriority = BEST_EFFORT_PRIORITY_CAP;
+    } else if (confMultiplier < 0.55 && followupPriority === 'specialist') {
+      followupPriority = 'earlier_review';
+    }
   }
+
+  const bestEffortCapReason =
+    isVeryLowConfidence
+      ? 'Video quality required best-effort analysis. Concern severity is capped at mild with routine follow-up.'
+      : confMultiplier < 0.55
+        ? 'Video quality required best-effort analysis. Concern severity is capped at moderate while confidence is limited.'
+        : 'Video quality required best-effort analysis. Consider confidence context alongside concern severity.';
 
   // Context notes
   const isLimited = isLimitedAssessment(quality.cameraAngle, quality.frameUsabilityPct, mode);
@@ -174,7 +192,7 @@ export function computeConcernProfile(
     qualityWarning: profile.qualityWarning || isBestEffort,
     confidenceDowngraded: profile.confidenceDowngraded || isBestEffort,
     downgradeReasons: isBestEffort
-      ? [...profile.downgradeReasons, 'Video quality required best-effort analysis. Concerns are capped at preliminary level.']
+      ? [...profile.downgradeReasons, bestEffortCapReason]
       : profile.downgradeReasons,
     isLimited,
     contextNotes,

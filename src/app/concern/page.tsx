@@ -18,6 +18,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { FOLLOWUP_BADGE_STYLES, FOLLOWUP_CALLOUT_STYLES } from "@/lib/presentation/severity";
 
 const RED_FLAGS = [
   { id: "rf-1", label: "Loss of previously acquired motor skills", urgent: true },
@@ -94,7 +95,7 @@ export default function ConcernPage() {
         <Card className="mb-4">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
-              <AlertTriangle className="h-4 w-4 text-concern-moderate" />
+              <AlertTriangle className="h-4 w-4 text-concern-significant" />
               Quick observation check
             </CardTitle>
           </CardHeader>
@@ -112,8 +113,8 @@ export default function ConcernPage() {
                     {rf.label}
                   </Label>
                   {rf.urgent && (
-                    <Badge variant="destructive" className="ml-1.5 text-[9px]">
-                      Priority
+                    <Badge variant="outline" className={`ml-1.5 text-[9px] ${FOLLOWUP_BADGE_STYLES.specialist}`}>
+                      Urgent
                     </Badge>
                   )}
                 </div>
@@ -124,14 +125,14 @@ export default function ConcernPage() {
 
         {/* Results */}
         {flaggedCount > 0 && (
-          <Card className="mb-4 bg-tertiary-fixed/30">
+          <Card className={`mb-4 ${urgentCount > 0 ? FOLLOWUP_CALLOUT_STYLES.specialist : "bg-tertiary-fixed/30"}`}>
             <CardContent className="p-4 text-xs">
               <p className="font-medium text-foreground mb-1">
                 {flaggedCount} observation(s) noted{urgentCount > 0 ? `, including ${urgentCount} priority item(s)` : ""}
               </p>
               <p className="text-muted-foreground">
                 We recommend discussing these with your child&apos;s healthcare team.
-                {urgentCount > 0 && " Priority items are especially worth mentioning at your next appointment."}
+                {urgentCount > 0 && " Urgent items should be escalated during the next clinical contact."}
               </p>
             </CardContent>
           </Card>

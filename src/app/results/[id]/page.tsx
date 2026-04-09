@@ -8,7 +8,6 @@ import {
   BarChart3,
   Camera,
   Download,
-  Info,
   PlayCircle,
   Video,
 } from "lucide-react";
@@ -22,6 +21,17 @@ import { exportReportAsPDF } from "@/lib/export/generatePDF";
 import { buildRunProvenance } from "@/lib/session/runProvenance";
 import type { AnalysisSessionResult } from "@/lib/session/analysisSession";
 import { buildReportBundle } from "@/lib/reports";
+import {
+  CONCERN_BADGE_STYLES,
+  CONCERN_LABELS,
+  CONCERN_PREFIX,
+  FOLLOWUP_BADGE_STYLES,
+  FOLLOWUP_CALLOUT_STYLES,
+  FOLLOWUP_CALLOUT_TEXT,
+  FOLLOWUP_LABELS,
+  toConcernLevel,
+  toFollowupPriority,
+} from "@/lib/presentation/severity";
 
 type ResultTab = "summary" | "video";
 
@@ -29,20 +39,6 @@ const TABS: { key: ResultTab; label: string; icon: typeof BarChart3 }[] = [
   { key: "summary", label: "Summary", icon: BarChart3 },
   { key: "video", label: "Hero Video", icon: PlayCircle },
 ];
-
-const CONCERN_BADGE_STYLES: Record<string, string> = {
-  none: "bg-secondary-container text-secondary-foreground",
-  mild: "bg-tertiary-fixed/45 text-foreground",
-  moderate: "bg-orange-100 text-orange-900",
-  significant: "bg-error-container text-on-error-container",
-};
-
-const CONCERN_LABELS: Record<string, string> = {
-  none: "None observed",
-  mild: "Mild observation",
-  moderate: "Moderate observation",
-  significant: "Significant observation",
-};
 
 const CONCERN_DOMAINS = [
   { key: "asymmetry", label: "Asymmetry", desc: "Left-right differences in walking pattern" },
@@ -243,6 +239,9 @@ export default function ResultsPage() {
   const hasTrace = Boolean(result.trace);
   const hasVideo = Boolean(videoUrl);
   const nickname = result.session.nickname;
+  const followupPriority = toFollowupPriority(result.concerns.followupPriority);
+  const followupLabel = FOLLOWUP_LABELS[followupPriority];
+  const followupSummary = FOLLOWUP_CALLOUT_TEXT[followupPriority];
 
   if (isValidationFailure) {
     return (
@@ -341,11 +340,11 @@ export default function ResultsPage() {
   return (
     <div className="pb-6">
       {isBestEffort && (
-        <div className="bg-secondary-container/70 px-4 py-2">
-          <p className="text-xs text-blue-700 flex items-center gap-2">
-            <Info className="h-3.5 w-3.5" />
+        <div className="border-b border-amber-300 bg-amber-50 px-4 py-2">
+          <p className="text-xs text-amber-900 flex items-center gap-2">
+            <AlertTriangle className="h-3.5 w-3.5" />
             <span>
-              <strong>Preliminary real analysis.</strong> The clip was usable, but some metrics were suppressed because confidence was limited.
+              <strong>Limited-confidence analysis.</strong> The clip was usable, but confidence constraints may reduce reliability for some metrics.
             </span>
           </p>
         </div>
@@ -397,8 +396,11 @@ export default function ResultsPage() {
             </div>
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Recommended next step</p>
+              <Badge variant="outline" className={`mt-1 text-[10px] ${FOLLOWUP_BADGE_STYLES[followupPriority]}`}>
+                {followupLabel}
+              </Badge>
               <p className="mt-1 text-sm">
-                {reportBundle?.caregiver.monitoringGuidance ?? "Record another clip if symptoms change and share this result with your clinician."}
+                {followupSummary}
               </p>
             </div>
           </CardContent>
@@ -426,23 +428,34 @@ export default function ResultsPage() {
 
         {activeTab === "summary" && (
           <div className="space-y-4">
+            <div
+              className={`rounded-xl border p-3 ${FOLLOWUP_CALLOUT_STYLES[followupPriority]}`}
+              role={followupPriority === "specialist" ? "alert" : undefined}
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-wide">Clinical follow-up priority</p>
+              <p className="mt-1 text-sm font-semibold">{followupLabel}</p>
+              <p className="text-xs">{followupSummary}</p>
+            </div>
+
             <Card className="bg-surface-container-lowest">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm">What We Noticed In This Video</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 {CONCERN_DOMAINS.map((domain) => {
-                  const level = result.concerns[domain.key as keyof typeof result.concerns] as string;
+                  const level = toConcernLevel(
+                    String(result.concerns[domain.key as keyof typeof result.concerns])
+                  );
                   const isSuppressed = result.concerns.suppressedDomains.includes(domain.key);
 
                   if (isSuppressed) {
                     return (
-                      <div key={domain.key} className="flex items-center justify-between rounded-2xl bg-surface-container-low p-3 opacity-50">
+                      <div key={domain.key} className="flex items-center justify-between rounded-2xl border border-dashed border-amber-300 bg-amber-50/60 p-3">
                         <div>
                           <p className="text-sm font-medium">{domain.label}</p>
                           <p className="text-xs text-muted-foreground">{domain.desc}</p>
                         </div>
-                        <Badge variant="outline" className="text-[10px] border-muted">
+                        <Badge variant="outline" className="text-[10px] border-amber-300 bg-amber-100 text-amber-900">
                           Not assessed
                         </Badge>
                       </div>
@@ -459,7 +472,7 @@ export default function ResultsPage() {
                         variant="outline"
                         className={`text-[10px] ${CONCERN_BADGE_STYLES[level] ?? ""}`}
                       >
-                        {CONCERN_LABELS[level] ?? level}
+                        {CONCERN_PREFIX[level]}: {CONCERN_LABELS[level]}
                       </Badge>
                     </div>
                   );
