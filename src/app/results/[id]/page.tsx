@@ -23,6 +23,7 @@ import {
   readSession,
   writeResult,
 } from "@/lib/session/sessionStorage";
+import { fetchResultFromCloud } from "@/lib/db/cloudStorage";
 import RunProvenanceBadge from "@/components/results/RunProvenanceBadge";
 import { exportReportAsPDF } from "@/lib/export/generatePDF";
 import { buildRunProvenance } from "@/lib/session/runProvenance";
@@ -319,20 +320,35 @@ export default function ResultsPage() {
     useState<SessionClinicalAssessment | null>(null);
 
   useEffect(() => {
-    // Try sessionStorage first (fast, same-session), then IndexedDB (persistent)
-    const raw = readResultRaw(resultId);
-    if (raw) {
-      setResult(normalizeResult(raw));
-    } else {
-      // Fallback to IndexedDB for persistence across page refreshes
-      getResult(resultId).then((stored) => {
-        if (stored) {
-          setResult(normalizeResult(JSON.stringify(stored)));
-          // Re-populate sessionStorage for fast subsequent access
-          writeResult(resultId, stored);
+    fetchResultFromCloud(resultId)
+      .then((cloudData) => {
+        if (cloudData) {
+          setResult(normalizeResult(JSON.stringify(cloudData)));
+          // Transparently cache to IndexedDB for local offline use
+          import("@/lib/session/videoStore").then(({ saveResult }) => {
+            saveResult(resultId, cloudData).catch(() => {});
+          });
+        } else {
+          // Fallback to old storage
+          const raw = readResultRaw(resultId);
+          if (raw) {
+            setResult(normalizeResult(raw));
+          } else {
+            getResult(resultId).then((stored) => {
+              if (stored) {
+                setResult(normalizeResult(JSON.stringify(stored)));
+                writeResult(resultId, stored);
+              }
+            }).catch(() => {});
+          }
         }
-      }).catch(() => {});
-    }
+      })
+      .catch((e) => {
+        console.error("Failed to fetch from cloud:", e);
+        // Fallback on error
+        const raw = readResultRaw(resultId);
+        if (raw) setResult(normalizeResult(raw));
+      });
   }, [resultId]);
 
   useEffect(() => {

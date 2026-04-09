@@ -7,6 +7,7 @@ import {
   readSession,
   writeResult,
 } from "@/lib/session/sessionStorage";
+import { fetchResultFromCloud } from "@/lib/db/cloudStorage";
 import { buildKeyFrames } from "@/lib/trace/buildKeyFrames";
 import { summarizeDetectionPath, type ConcernEvidence } from "@/lib/trace/summarizeDetectionPath";
 
@@ -68,27 +69,49 @@ export function useResultViewModel(resultId: string): ResultViewModel {
   useEffect(() => {
     let active = true;
 
-    const raw = readResultRaw(resultId);
-    if (raw) {
-      setResult(normalizeResult(raw));
-      return () => {
-        active = false;
-      };
-    }
-
-    getResult(resultId)
-      .then((stored) => {
+    fetchResultFromCloud(resultId)
+      .then(async (cloudData) => {
         if (!active) return;
-        if (!stored) {
-          setResult(null);
+        if (cloudData) {
+          setResult(normalizeResult(JSON.stringify(cloudData)));
+          
+          // Transparent cache to local indexedDB
+          try {
+            const { saveResult } = await import("@/lib/session/videoStore");
+            await saveResult(resultId, cloudData);
+          } catch {}
           return;
         }
 
-        writeResult(resultId, stored);
-        setResult(normalizeResult(JSON.stringify(stored)));
+        // Fallback to local storage if cloud is missing or token is broken
+        const raw = readResultRaw(resultId);
+        if (raw) {
+          setResult(normalizeResult(raw));
+          return;
+        }
+
+        getResult(resultId)
+          .then((stored) => {
+            if (!active) return;
+            if (!stored) {
+              setResult(null);
+              return;
+            }
+            writeResult(resultId, stored);
+            setResult(normalizeResult(JSON.stringify(stored)));
+          })
+          .catch(() => {
+            if (active) setResult(null);
+          });
       })
-      .catch(() => {
-        if (active) {
+      .catch((err) => {
+        console.error("Cloud fetch failed:", err);
+        if (!active) return;
+        
+        const raw = readResultRaw(resultId);
+        if (raw) {
+          setResult(normalizeResult(raw));
+        } else {
           setResult(null);
         }
       });

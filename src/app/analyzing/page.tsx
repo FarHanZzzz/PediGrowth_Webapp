@@ -22,9 +22,9 @@ import { runAnalysisPipeline } from "@/lib/session/analysisSession";
 import { saveResult } from "@/lib/session/videoStore";
 import {
   readSessionRaw,
-  writeResultRaw,
   writeSession,
 } from "@/lib/session/sessionStorage";
+import { saveResultToCloud } from "@/lib/db/cloudStorage";
 import type { PipelineProgress } from "@/lib/session/analysisSession";
 
 const STAGE_LABELS = [
@@ -153,20 +153,20 @@ export default function AnalyzingPage() {
         intakeContext,
       },
     )
-      .then((result) => {
+      .then(async (result) => {
         settled = true;
         if (timeoutId) {
           clearTimeout(timeoutId);
         }
         const resultId = result.id;
-        const serialized = JSON.stringify(result);
-        // sessionStorage has a ~5MB limit; IndexedDB is the primary store
+
         try {
-          writeResultRaw(resultId, serialized);
-        } catch {
-          // QuotaExceededError â€” fall through, IndexedDB will handle it
-          console.warn("sessionStorage quota exceeded, using IndexedDB only");
+          await saveResultToCloud(resultId, result);
+        } catch (e) {
+          console.error("Failed to save to Supabase cloud:", e);
+          // Fallback to IndexedDB if network fails so the demo continues
         }
+        
         saveResult(resultId, result).catch(() => {});
 
         setCurrentStage(STAGE_LABELS.length);
