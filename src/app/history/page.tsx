@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -23,6 +23,7 @@ import {
   toConcernLevel,
 } from "@/lib/presentation/severity";
 import { collectResultIds, readResultRaw } from "@/lib/session/sessionStorage";
+import { fetchRecentResultsFromCloud, type CloudResultRecord } from "@/lib/db/cloudStorage";
 
 type HistoryStatus = "stable" | "follow_up" | "retake";
 
@@ -54,6 +55,50 @@ interface ParsedResultSummary {
   trace?: { pipeline?: { direction?: string } };
   session?: { nickname?: string; ageMonths?: number };
   analyzedAt?: string;
+}
+
+function isAnalysisRecord(result: ParsedResultSummary): boolean {
+  return Boolean(
+    result?.run ||
+      result?.assessmentMode ||
+      result?.quality ||
+      result?.concerns ||
+      result?.reports ||
+      result?.trace,
+  );
+}
+
+function toHistoryRow(id: string, result: ParsedResultSummary): HistoryRow | null {
+  if (!isAnalysisRecord(result)) {
+    return null;
+  }
+
+  const analyzedAt = result?.analyzedAt ?? result?.run?.analyzedAt ?? null;
+  const routeLabel =
+    result?.concerns?.viewLabel ??
+    (result?.trace?.pipeline?.direction
+      ? `Direction: ${String(result.trace.pipeline.direction)}`
+      : "Route unavailable");
+
+  return {
+    id,
+    childName: String(result?.session?.nickname ?? "Child"),
+    ageMonths: typeof result?.session?.ageMonths === "number" ? result.session.ageMonths : null,
+    analyzedAt,
+    concernLevel: String(result?.concerns?.overallLevel ?? "none"),
+    confidenceNote: String(result?.quality?.confidenceNotes ?? "No confidence note available."),
+    reportSummary:
+      typeof result?.reports?.caregiver?.observationsText === "string"
+        ? result.reports.caregiver.observationsText
+        : null,
+    nextStep:
+      typeof result?.reports?.caregiver?.monitoringGuidance === "string"
+        ? result.reports.caregiver.monitoringGuidance
+        : null,
+    status: deriveStatus(result),
+    qualityResult: String(result?.quality?.result ?? "unknown"),
+    routeLabel,
+  };
 }
 
 function deriveStatus(result: ParsedResultSummary): HistoryStatus {
@@ -91,33 +136,10 @@ function buildRowsFromSessionStorage(): HistoryRow[] {
 
     try {
       const result = JSON.parse(raw) as ParsedResultSummary;
-      const analyzedAt = result?.analyzedAt ?? result?.run?.analyzedAt ?? null;
-      const routeLabel =
-        result?.concerns?.viewLabel ??
-        (result?.trace?.pipeline?.direction
-          ? `Direction: ${String(result.trace.pipeline.direction)}`
-          : "Route unavailable");
-
-      rows.push({
-        id,
-        childName: String(result?.session?.nickname ?? "Child"),
-        ageMonths:
-          typeof result?.session?.ageMonths === "number" ? result.session.ageMonths : null,
-        analyzedAt,
-        concernLevel: String(result?.concerns?.overallLevel ?? "none"),
-        confidenceNote: String(result?.quality?.confidenceNotes ?? "No confidence note available."),
-        reportSummary:
-          typeof result?.reports?.caregiver?.observationsText === "string"
-            ? result.reports.caregiver.observationsText
-            : null,
-        nextStep:
-          typeof result?.reports?.caregiver?.monitoringGuidance === "string"
-            ? result.reports.caregiver.monitoringGuidance
-            : null,
-        status: deriveStatus(result),
-        qualityResult: String(result?.quality?.result ?? "unknown"),
-        routeLabel,
-      });
+      const row = toHistoryRow(id, result);
+      if (row) {
+        rows.push(row);
+      }
     } catch {
       // Skip malformed session entries.
     }
@@ -128,6 +150,31 @@ function buildRowsFromSessionStorage(): HistoryRow[] {
     const bTime = b.analyzedAt ? Date.parse(b.analyzedAt) : 0;
     return bTime - aTime;
   });
+}
+
+function buildRowsFromCloudRecords(records: CloudResultRecord[]): HistoryRow[] {
+  const rows: HistoryRow[] = [];
+
+  for (const record of records) {
+    const payload = (record.payload ?? null) as ParsedResultSummary | null;
+    if (!payload || typeof payload !== "object") {
+      continue;
+    }
+
+    const row = toHistoryRow(record.id, {
+      ...payload,
+      analyzedAt:
+        typeof payload.analyzedAt === "string"
+          ? payload.analyzedAt
+          : record.updated_at ?? record.created_at ?? null ?? undefined,
+    });
+
+    if (row) {
+      rows.push(row);
+    }
+  }
+
+  return rows;
 }
 
 function statusMeta(status: HistoryStatus) {
@@ -162,8 +209,55 @@ function humanConcern(level: string): string {
 export default function HistoryPage() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | HistoryStatus>("all");
+  const [cloudRows, setCloudRows] = useState<HistoryRow[]>([]);
 
-  const allRows = useMemo(() => buildRowsFromSessionStorage(), []);
+  useEffect(() => {
+    let active = true;
+
+    fetchRecentResultsFromCloud(200)
+      .then((records) => {
+        if (!active) return;
+        setCloudRows(buildRowsFromCloudRecords(records));
+      })
+      .catch(() => {
+        if (!active) return;
+        setCloudRows([]);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const localRows = useMemo(() => buildRowsFromSessionStorage(), []);
+
+  const allRows = useMemo(() => {
+    const byId = new Map<string, HistoryRow>();
+
+    for (const row of cloudRows) {
+      byId.set(row.id, row);
+    }
+
+    for (const row of localRows) {
+      const existing = byId.get(row.id);
+      if (!existing) {
+        byId.set(row.id, row);
+        continue;
+      }
+
+      const existingTs = existing.analyzedAt ? Date.parse(existing.analyzedAt) : 0;
+      const rowTs = row.analyzedAt ? Date.parse(row.analyzedAt) : 0;
+      if (rowTs > existingTs) {
+        byId.set(row.id, row);
+      }
+    }
+
+    return Array.from(byId.values()).sort((a, b) => {
+      const aTime = a.analyzedAt ? Date.parse(a.analyzedAt) : 0;
+      const bTime = b.analyzedAt ? Date.parse(b.analyzedAt) : 0;
+      return bTime - aTime;
+    });
+  }, [cloudRows, localRows]);
 
   const rows = useMemo(
     () =>
@@ -202,7 +296,7 @@ export default function HistoryPage() {
             </p>
             <h1 className="medical-title text-3xl font-semibold text-foreground">Assessment History</h1>
             <p className="text-sm text-muted-foreground">
-              Parent dashboard (local session): review previous runs, next steps, and reopen evidence quickly.
+              Parent dashboard (cross-device cloud sync): review previous runs, next steps, and reopen evidence quickly.
             </p>
           </div>
 
