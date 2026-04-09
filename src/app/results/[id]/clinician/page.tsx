@@ -24,6 +24,11 @@ import EventTimeline from "@/components/results/EventTimeline";
 import KeyFrameGallery from "../../../../components/results/KeyFrameGallery";
 import AnalysisTracePanel from "@/components/results/AnalysisTracePanel";
 import HowAnalysisWorksPanel from "@/components/results/HowAnalysisWorksPanel";
+// ── Clinical assessment components (Motor Delay + GMFCS) ──────────
+import GMFCSCard from "@/components/clinical/GMFCSCard";
+import MotorDelayAssessmentSummary from "@/components/clinical/MotorDelayAssessmentSummary";
+import { readSession } from "@/lib/session/sessionStorage";
+import type { MotorDelayAssessment } from "@/lib/clinical/frameworks";
 import {
   formatDomainLabel,
   useResultViewModel,
@@ -66,6 +71,25 @@ export default function ClinicianResultPage() {
   });
   const [shareLinkStatus, setShareLinkStatus] = useState<string | null>(null);
   const [isCreatingShareLink, setIsCreatingShareLink] = useState(false);
+
+  // ── Clinical assessment data from Route A (Concern Navigator) ────
+  // This data is persisted by the concern page when the parent completes
+  // the motor milestone and AIMS checklists. It is read here for display.
+  const [clinicalAssessmentData, setClinicalAssessmentData] = useState<{
+    redFlags?: string[];
+    urgentRedFlagCount?: number;
+    motorDelayAssessment?: MotorDelayAssessment | null;
+    aimsCompleted?: boolean;
+    assessedAt?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    // Read clinical assessment from session (set by concern/page.tsx)
+    const session = readSession<{ clinicalAssessment?: typeof clinicalAssessmentData }>();
+    if (session?.clinicalAssessment) {
+      setClinicalAssessmentData(session.clinicalAssessment);
+    }
+  }, []);
 
   const {
     result,
@@ -593,9 +617,46 @@ export default function ClinicianResultPage() {
           </CardContent>
         </Card>
 
+        {/* ── NEW: Section 6 — Standardized Clinical Scales ──────── */}
+        {/* GMFCS Classification — always shown for clinician documentation */}
+        <GMFCSCard interactive={true} />
+
+        {/* Motor Delay Assessment Summary — only shown if Route A data exists */}
+        {clinicalAssessmentData?.motorDelayAssessment && (
+          <MotorDelayAssessmentSummary
+            assessment={clinicalAssessmentData.motorDelayAssessment}
+            ageMonths={result.session.ageMonths ?? 0}
+            childName={result.session.nickname ?? "Child"}
+          />
+        )}
+
+        {/* Red flags from Route A concern navigator */}
+        {clinicalAssessmentData?.redFlags && clinicalAssessmentData.redFlags.length > 0 && (
+          <Card className="print-section">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <AlertTriangle className="h-4 w-4" />
+                Route A: Caregiver-Reported Red Flags
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <ul className="list-disc space-y-1 pl-4 text-xs text-muted-foreground">
+                {clinicalAssessmentData.redFlags.map((flag, index) => (
+                  <li key={index}>{flag}</li>
+                ))}
+              </ul>
+              {clinicalAssessmentData.assessedAt && (
+                <p className="text-[11px] text-muted-foreground/60">
+                  Assessed: {new Date(clinicalAssessmentData.assessedAt).toLocaleString()}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         <Card className="print-section">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">6. Quality Limits and Caveats</CardTitle>
+            <CardTitle className="text-sm">7. Quality Limits and Caveats</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm">{result.quality.confidenceNotes}</p>
@@ -634,7 +695,7 @@ export default function ClinicianResultPage() {
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm">
               <Video className="h-4 w-4" />
-              7. Appendix / Advanced Evidence
+              8. Appendix / Advanced Evidence
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -739,7 +800,7 @@ export default function ClinicianResultPage() {
 
         <Card className="print-section print-hidden">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">8. Handoff Actions</CardTitle>
+            <CardTitle className="text-sm">9. Handoff Actions</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-xs text-muted-foreground">
@@ -836,7 +897,7 @@ export default function ClinicianResultPage() {
 
         <Card className="print-section">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">9. Clinician Note (local)</CardTitle>
+            <CardTitle className="text-sm">10. Clinician Note (local)</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-xs text-muted-foreground print-hidden">
