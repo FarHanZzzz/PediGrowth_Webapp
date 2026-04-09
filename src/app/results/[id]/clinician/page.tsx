@@ -54,10 +54,29 @@ const CONCERN_DOMAINS = [
 
 type ClinicianTab = "snapshot" | "evidence" | "handoff";
 
+type SnapshotSectionKey =
+  | "decision"
+  | "context"
+  | "findings"
+  | "confidence"
+  | "followup"
+  | "scales"
+  | "quality";
+
 const CLINICIAN_TABS: Array<{ key: ClinicianTab; label: string }> = [
   { key: "snapshot", label: "Snapshot" },
   { key: "evidence", label: "Advanced Evidence" },
   { key: "handoff", label: "Handoff & Notes" },
+];
+
+const SNAPSHOT_SECTIONS: Array<{ key: SnapshotSectionKey; label: string }> = [
+  { key: "decision", label: "Decision" },
+  { key: "context", label: "Context" },
+  { key: "findings", label: "Findings" },
+  { key: "confidence", label: "Confidence" },
+  { key: "followup", label: "Follow-up" },
+  { key: "scales", label: "Scales" },
+  { key: "quality", label: "Quality Limits" },
 ];
 
 interface AiInsightResponse {
@@ -76,6 +95,7 @@ export default function ClinicianResultPage() {
   const noteStorageKey = `gaitbridge_clinician_note_${resultId}`;
 
   const [activeTab, setActiveTab] = useState<ClinicianTab>("snapshot");
+  const [activeSnapshotSection, setActiveSnapshotSection] = useState<SnapshotSectionKey>("decision");
   const [jumpToFrameIndex, setJumpToFrameIndex] = useState<number | null>(null);
   const [currentEvidenceFrameIndex, setCurrentEvidenceFrameIndex] = useState<number | null>(null);
   const [isTier1FrameSyncLocked, setIsTier1FrameSyncLocked] = useState(true);
@@ -313,6 +333,9 @@ export default function ClinicianResultPage() {
     };
   });
 
+  const snapshotSectionClass = (section: SnapshotSectionKey) =>
+    activeSnapshotSection === section ? "" : "hidden print:block";
+
   const handlePrintPacket = () => {
     window.print();
   };
@@ -511,7 +534,27 @@ export default function ClinicianResultPage() {
 
         <div className={activeTab === "snapshot" ? "space-y-4" : "hidden print:block print:space-y-4"}>
 
-        <Card className="print-section">
+        <div className="print-hidden rounded-xl border border-border/60 bg-surface-container-low p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Snapshot segments</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {SNAPSHOT_SECTIONS.map((section) => (
+              <button
+                key={section.key}
+                type="button"
+                onClick={() => setActiveSnapshotSection(section.key)}
+                className={`rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                  activeSnapshotSection === section.key
+                    ? "border-border bg-surface-container-lowest text-foreground"
+                    : "border-border/60 bg-background text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {section.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <Card className={`print-section ${snapshotSectionClass("decision")}`}>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">1. Clinical Decision Snapshot</CardTitle>
           </CardHeader>
@@ -569,7 +612,7 @@ export default function ClinicianResultPage() {
           </CardContent>
         </Card>
 
-        <Card className="print-section">
+        <Card className={`print-section ${snapshotSectionClass("context")}`}>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">2. Context for This Recording</CardTitle>
           </CardHeader>
@@ -629,7 +672,7 @@ export default function ClinicianResultPage() {
           </CardContent>
         </Card>
 
-        <Card className="print-section">
+        <Card className={`print-section ${snapshotSectionClass("findings")}`}>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm">
               <Stethoscope className="h-4 w-4" />
@@ -668,7 +711,7 @@ export default function ClinicianResultPage() {
           </CardContent>
         </Card>
 
-        <Card className="print-section">
+        <Card className={`print-section ${snapshotSectionClass("confidence")}`}>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">4. Assessability and Confidence</CardTitle>
           </CardHeader>
@@ -720,7 +763,7 @@ export default function ClinicianResultPage() {
           </CardContent>
         </Card>
 
-        <Card className="print-section">
+        <Card className={`print-section ${snapshotSectionClass("followup")}`}>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">5. Recommended Follow-up Actions</CardTitle>
           </CardHeader>
@@ -748,44 +791,46 @@ export default function ClinicianResultPage() {
           </CardContent>
         </Card>
 
-        {/* ── NEW: Section 6 — Standardized Clinical Scales ──────── */}
-        {/* GMFCS Classification — always shown for clinician documentation */}
-        <GMFCSCard interactive={true} />
+        <div className={snapshotSectionClass("scales")}>
+          {/* ── NEW: Section 6 — Standardized Clinical Scales ──────── */}
+          {/* GMFCS Classification — always shown for clinician documentation */}
+          <GMFCSCard interactive={true} />
 
-        {/* Motor Delay Assessment Summary — only shown if Route A data exists */}
-        {clinicalAssessmentData?.motorDelayAssessment && (
-          <MotorDelayAssessmentSummary
-            assessment={clinicalAssessmentData.motorDelayAssessment}
-            ageMonths={result.session.ageMonths ?? 0}
-            childName={result.session.nickname ?? "Child"}
-          />
-        )}
+          {/* Motor Delay Assessment Summary — only shown if Route A data exists */}
+          {clinicalAssessmentData?.motorDelayAssessment && (
+            <MotorDelayAssessmentSummary
+              assessment={clinicalAssessmentData.motorDelayAssessment}
+              ageMonths={result.session.ageMonths ?? 0}
+              childName={result.session.nickname ?? "Child"}
+            />
+          )}
 
-        {/* Red flags from Route A concern navigator */}
-        {clinicalAssessmentData?.redFlags && clinicalAssessmentData.redFlags.length > 0 && (
-          <Card className="print-section">
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <AlertTriangle className="h-4 w-4" />
-                Route A: Caregiver-Reported Red Flags
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <ul className="list-disc space-y-1 pl-4 text-xs text-muted-foreground">
-                {clinicalAssessmentData.redFlags.map((flag, index) => (
-                  <li key={index}>{flag}</li>
-                ))}
-              </ul>
-              {clinicalAssessmentData.assessedAt && (
-                <p className="text-[11px] text-muted-foreground/60">
-                  Assessed: {new Date(clinicalAssessmentData.assessedAt).toLocaleString()}
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        )}
+          {/* Red flags from Route A concern navigator */}
+          {clinicalAssessmentData?.redFlags && clinicalAssessmentData.redFlags.length > 0 && (
+            <Card className="print-section">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <AlertTriangle className="h-4 w-4" />
+                  Route A: Caregiver-Reported Red Flags
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <ul className="list-disc space-y-1 pl-4 text-xs text-muted-foreground">
+                  {clinicalAssessmentData.redFlags.map((flag, index) => (
+                    <li key={index}>{flag}</li>
+                  ))}
+                </ul>
+                {clinicalAssessmentData.assessedAt && (
+                  <p className="text-[11px] text-muted-foreground/60">
+                    Assessed: {new Date(clinicalAssessmentData.assessedAt).toLocaleString()}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
 
-        <Card className="print-section">
+        <Card className={`print-section ${snapshotSectionClass("quality")}`}>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">7. Quality Limits and Caveats</CardTitle>
           </CardHeader>
