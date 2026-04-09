@@ -22,8 +22,11 @@ and communicate pediatric gait-related concerns more consistently and earlier.
 ## Cloud Deployment
 
 - Vercel + AWS deployment guide: `docs/DEPLOY_VERCEL_AWS.md`
+- DigitalOcean App Platform guide: `docs/DEPLOY_DIGITALOCEAN_APP_PLATFORM.md`
 - Vercel env template: `.env.vercel.example`
 - AWS backend env template: `.env.aws-backend.example`
+- DigitalOcean frontend env template: `.env.digitalocean.frontend.example`
+- DigitalOcean backend env template: `.env.digitalocean.backend.example`
 
 ## Quick Start
 
