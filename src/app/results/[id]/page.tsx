@@ -29,10 +29,10 @@ import {
 import { fetchResultFromCloud } from "@/lib/db/cloudStorage";
 import RunProvenanceBadge from "@/components/results/RunProvenanceBadge";
 import { exportReportAsPDF } from "@/lib/export/generatePDF";
-import { buildRunProvenance } from "@/lib/session/runProvenance";
 import type { AnalysisSessionResult } from "@/lib/session/analysisSession";
 import type { AnalysisTrace } from "@/lib/trace/traceTypes";
 import { buildReportBundle } from "@/lib/reports";
+import { normalizeResult } from "@/lib/results/normalizeResult";
 import {
   CONCERN_BADGE_STYLES,
   CONCERN_LABELS,
@@ -277,26 +277,6 @@ function buildAssistantIssueHotspots(result: AnalysisSessionResult): AssistantIs
       return a.timestampMs - b.timestampMs;
     })
     .slice(0, 6);
-}
-
-function normalizeResult(raw: string): AnalysisSessionResult {
-  const parsed = JSON.parse(raw) as AnalysisSessionResult & {
-    isDemo?: boolean;
-    demoScenario?: string;
-    run?: AnalysisSessionResult["run"];
-  };
-
-  if (!parsed.run) {
-    parsed.run = buildRunProvenance({
-      classification: parsed.isDemo ? "demo_fixture" : "real_analysis",
-      sourceType: parsed.isDemo ? "demo_fixture" : "unknown",
-      sourceClipFilename: parsed.trace?.run.sourceClipFilename ?? null,
-      modelId: parsed.trace?.run.modelId ?? "unknown",
-      modelLabel: parsed.trace?.run.modelLabel ?? "Unknown model",
-    });
-  }
-
-  return parsed;
 }
 
 function formatDomainLabel(domain: string): string {

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import type { AnalysisSessionResult } from "@/lib/session/analysisSession";
-import { buildRunProvenance } from "@/lib/session/runProvenance";
 import { getResult } from "@/lib/session/videoStore";
 import {
   readResultRaw,
@@ -10,6 +9,7 @@ import {
 import { fetchResultFromCloud } from "@/lib/db/cloudStorage";
 import { buildKeyFrames } from "@/lib/trace/buildKeyFrames";
 import { summarizeDetectionPath, type ConcernEvidence } from "@/lib/trace/summarizeDetectionPath";
+import { normalizeResult } from "@/lib/results/normalizeResult";
 
 function formatDemoVideoPath(sourceClipFilename: string | null): string | null {
   if (!sourceClipFilename) return null;
@@ -25,26 +25,6 @@ function formatDemoVideoPath(sourceClipFilename: string | null): string | null {
 
 export function formatDomainLabel(domain: string): string {
   return domain.charAt(0).toUpperCase() + domain.slice(1).replace(/([A-Z])/g, " $1");
-}
-
-export function normalizeResult(raw: string): AnalysisSessionResult {
-  const parsed = JSON.parse(raw) as AnalysisSessionResult & {
-    isDemo?: boolean;
-    demoScenario?: string;
-    run?: AnalysisSessionResult["run"];
-  };
-
-  if (!parsed.run) {
-    parsed.run = buildRunProvenance({
-      classification: parsed.isDemo ? "demo_fixture" : "real_analysis",
-      sourceType: parsed.isDemo ? "demo_fixture" : "unknown",
-      sourceClipFilename: parsed.trace?.run.sourceClipFilename ?? null,
-      modelId: parsed.trace?.run.modelId ?? "unknown",
-      modelLabel: parsed.trace?.run.modelLabel ?? "Unknown model",
-    });
-  }
-
-  return parsed;
 }
 
 export interface ResultViewModel {

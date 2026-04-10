@@ -7,23 +7,75 @@ export interface CloudResultRecord {
   updated_at: string | null;
 }
 
-export async function fetchResultFromCloud(resultId: string): Promise<Record<string, unknown> | null> {
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function looksLikeAnalysisPayload(payload: Record<string, unknown>): boolean {
+  return (
+    "quality" in payload ||
+    "concerns" in payload ||
+    "session" in payload ||
+    "assessmentMode" in payload
+  );
+}
+
+function looksLikeLegacySharePacket(payload: Record<string, unknown>): boolean {
+  return (
+    typeof payload.assessment_ref === "string" &&
+    "payload" in payload &&
+    !looksLikeAnalysisPayload(payload)
+  );
+}
+
+async function fetchPayloadById(
+  resultId: string
+): Promise<Record<string, unknown> | null> {
   const supabase = createClient();
-  
+
   const { data, error } = await supabase
     .from("hackathon_results")
     .select("payload")
     .eq("id", resultId)
-    .single();
+    .maybeSingle();
 
   if (error || !data) {
-    if (error && error.code !== 'PGRST116') { // PGRST116 is "No rows found"
+    if (error && error.code !== "PGRST116") {
       console.error("Error fetching from cloud:", error);
     }
     return null;
   }
 
-  return data.payload as Record<string, unknown>;
+  return asRecord(data.payload);
+}
+
+export async function fetchResultFromCloud(resultId: string): Promise<Record<string, unknown> | null> {
+  const payload = await fetchPayloadById(resultId);
+  if (!payload) {
+    return null;
+  }
+
+  // Legacy share-link fallback stored share packets inside hackathon_results.
+  // If this ID is actually a token hash row, resolve to the linked assessment.
+  if (looksLikeLegacySharePacket(payload)) {
+    const assessmentRef = payload.assessment_ref as string;
+    if (assessmentRef && assessmentRef !== resultId) {
+      const linked = await fetchPayloadById(assessmentRef);
+      if (linked) {
+        return linked;
+      }
+    }
+    return null;
+  }
+
+  if (!looksLikeAnalysisPayload(payload)) {
+    return null;
+  }
+
+  return payload;
 }
 
 export async function saveResultToCloud(resultId: string, payload: Record<string, unknown> | unknown): Promise<void> {
