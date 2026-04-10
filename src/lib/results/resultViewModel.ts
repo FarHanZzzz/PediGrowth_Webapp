@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { AnalysisSessionResult } from "@/lib/session/analysisSession";
+import { buildRunProvenance } from "@/lib/session/runProvenance";
 import { getResult } from "@/lib/session/videoStore";
 import {
   readResultRaw,
@@ -9,7 +10,6 @@ import {
 import { fetchResultFromCloud } from "@/lib/db/cloudStorage";
 import { buildKeyFrames } from "@/lib/trace/buildKeyFrames";
 import { summarizeDetectionPath, type ConcernEvidence } from "@/lib/trace/summarizeDetectionPath";
-import { normalizeResult } from "@/lib/results/normalizeResult";
 
 function formatDemoVideoPath(sourceClipFilename: string | null): string | null {
   if (!sourceClipFilename) return null;
@@ -27,9 +27,28 @@ export function formatDomainLabel(domain: string): string {
   return domain.charAt(0).toUpperCase() + domain.slice(1).replace(/([A-Z])/g, " $1");
 }
 
+export function normalizeResult(raw: string): AnalysisSessionResult {
+  const parsed = JSON.parse(raw) as AnalysisSessionResult & {
+    isDemo?: boolean;
+    demoScenario?: string;
+    run?: AnalysisSessionResult["run"];
+  };
+
+  if (!parsed.run) {
+    parsed.run = buildRunProvenance({
+      classification: parsed.isDemo ? "demo_fixture" : "real_analysis",
+      sourceType: parsed.isDemo ? "demo_fixture" : "unknown",
+      sourceClipFilename: parsed.trace?.run.sourceClipFilename ?? null,
+      modelId: parsed.trace?.run.modelId ?? "unknown",
+      modelLabel: parsed.trace?.run.modelLabel ?? "Unknown model",
+    });
+  }
+
+  return parsed;
+}
+
 export interface ResultViewModel {
   result: AnalysisSessionResult | null;
-  isLoading: boolean;
   videoUrl: string | null;
   exportAvailable: boolean;
   keyFrames: ReturnType<typeof buildKeyFrames> | null;
@@ -44,20 +63,17 @@ export interface ResultViewModel {
 
 export function useResultViewModel(resultId: string): ResultViewModel {
   const [result, setResult] = useState<AnalysisSessionResult | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [exportAvailable, setExportAvailable] = useState(false);
 
   useEffect(() => {
     let active = true;
-    setIsLoading(true);
 
     fetchResultFromCloud(resultId)
       .then(async (cloudData) => {
         if (!active) return;
         if (cloudData) {
           setResult(normalizeResult(JSON.stringify(cloudData)));
-          setIsLoading(false);
           
           // Transparent cache to local indexedDB
           try {
@@ -71,7 +87,6 @@ export function useResultViewModel(resultId: string): ResultViewModel {
         const raw = readResultRaw(resultId);
         if (raw) {
           setResult(normalizeResult(raw));
-          setIsLoading(false);
           return;
         }
 
@@ -80,18 +95,13 @@ export function useResultViewModel(resultId: string): ResultViewModel {
             if (!active) return;
             if (!stored) {
               setResult(null);
-              setIsLoading(false);
               return;
             }
             writeResult(resultId, stored);
             setResult(normalizeResult(JSON.stringify(stored)));
-            setIsLoading(false);
           })
           .catch(() => {
-            if (active) {
-              setResult(null);
-              setIsLoading(false);
-            }
+            if (active) setResult(null);
           });
       })
       .catch((err) => {
@@ -104,7 +114,6 @@ export function useResultViewModel(resultId: string): ResultViewModel {
         } else {
           setResult(null);
         }
-        setIsLoading(false);
       });
 
     return () => {
@@ -126,17 +135,12 @@ export function useResultViewModel(resultId: string): ResultViewModel {
     let active = true;
 
     async function loadVideo() {
-      const persistedFallbackVideoUrl =
-        resolvedResult.videoUrl ??
-        (resolvedResult.run.sourceType === "manifest_hero"
-          ? formatDemoVideoPath(resolvedResult.run.sourceClipFilename)
-          : null);
-
       if (resolvedResult.run.classification !== "real_analysis") {
-        setVideoUrl(
-          persistedFallbackVideoUrl ??
-            formatDemoVideoPath(resolvedResult.run.sourceClipFilename)
-        );
+        if (resolvedResult.videoUrl) {
+          setVideoUrl(resolvedResult.videoUrl);
+          return;
+        }
+        setVideoUrl(formatDemoVideoPath(resolvedResult.run.sourceClipFilename));
         return;
       }
 
@@ -148,7 +152,7 @@ export function useResultViewModel(resultId: string): ResultViewModel {
         })();
 
       if (!sessionId) {
-        setVideoUrl(persistedFallbackVideoUrl);
+        setVideoUrl(resolvedResult.videoUrl ?? null);
         return;
       }
 
@@ -156,14 +160,14 @@ export function useResultViewModel(resultId: string): ResultViewModel {
         const { getVideo } = await import("@/lib/session/videoStore");
         const videoData = await getVideo(sessionId);
         if (!videoData?.blob) {
-          if (active) setVideoUrl(persistedFallbackVideoUrl);
+          if (active) setVideoUrl(resolvedResult.videoUrl ?? null);
           return;
         }
 
         objectUrl = URL.createObjectURL(videoData.blob);
         if (active) setVideoUrl(objectUrl);
       } catch {
-        if (active) setVideoUrl(persistedFallbackVideoUrl);
+        if (active) setVideoUrl(resolvedResult.videoUrl ?? null);
       }
     }
 
@@ -223,7 +227,6 @@ export function useResultViewModel(resultId: string): ResultViewModel {
 
   return {
     result,
-    isLoading,
     videoUrl,
     exportAvailable,
     keyFrames,

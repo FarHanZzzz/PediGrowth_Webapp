@@ -29,10 +29,10 @@ import {
 import { fetchResultFromCloud } from "@/lib/db/cloudStorage";
 import RunProvenanceBadge from "@/components/results/RunProvenanceBadge";
 import { exportReportAsPDF } from "@/lib/export/generatePDF";
+import { buildRunProvenance } from "@/lib/session/runProvenance";
 import type { AnalysisSessionResult } from "@/lib/session/analysisSession";
 import type { AnalysisTrace } from "@/lib/trace/traceTypes";
 import { buildReportBundle } from "@/lib/reports";
-import { normalizeResult } from "@/lib/results/normalizeResult";
 import {
   CONCERN_BADGE_STYLES,
   CONCERN_LABELS,
@@ -279,20 +279,28 @@ function buildAssistantIssueHotspots(result: AnalysisSessionResult): AssistantIs
     .slice(0, 6);
 }
 
-function formatDomainLabel(domain: string): string {
-  return domain.charAt(0).toUpperCase() + domain.slice(1).replace(/([A-Z])/g, " $1");
+function normalizeResult(raw: string): AnalysisSessionResult {
+  const parsed = JSON.parse(raw) as AnalysisSessionResult & {
+    isDemo?: boolean;
+    demoScenario?: string;
+    run?: AnalysisSessionResult["run"];
+  };
+
+  if (!parsed.run) {
+    parsed.run = buildRunProvenance({
+      classification: parsed.isDemo ? "demo_fixture" : "real_analysis",
+      sourceType: parsed.isDemo ? "demo_fixture" : "unknown",
+      sourceClipFilename: parsed.trace?.run.sourceClipFilename ?? null,
+      modelId: parsed.trace?.run.modelId ?? "unknown",
+      modelLabel: parsed.trace?.run.modelLabel ?? "Unknown model",
+    });
+  }
+
+  return parsed;
 }
 
-function formatDemoVideoPath(sourceClipFilename: string | null): string | null {
-  if (!sourceClipFilename) return null;
-  if (
-    sourceClipFilename.startsWith("/") ||
-    sourceClipFilename.startsWith("http://") ||
-    sourceClipFilename.startsWith("https://")
-  ) {
-    return sourceClipFilename;
-  }
-  return `/demo/videos/${sourceClipFilename}`;
+function formatDomainLabel(domain: string): string {
+  return domain.charAt(0).toUpperCase() + domain.slice(1).replace(/([A-Z])/g, " $1");
 }
 
 const AssistantPanel = dynamic(() => import("@/components/results/AssistantPanel"), {
@@ -309,134 +317,85 @@ export default function ResultsPage() {
   const [activeTab, setActiveTab] = useState<ResultTab>("summary");
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [exportAvailable, setExportAvailable] = useState(false);
-  const [isMobileAssistantOpen, setIsMobileAssistantOpen] = useState(false);
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
   const [jumpToFrameIndex, setJumpToFrameIndex] = useState<number | null>(null);
   const [sessionClinicalAssessment, setSessionClinicalAssessment] =
     useState<SessionClinicalAssessment | null>(null);
-  const [isLoadingResult, setIsLoadingResult] = useState(true);
 
   useEffect(() => {
-    let active = true;
-    setIsLoadingResult(true);
-
     fetchResultFromCloud(resultId)
-      .then(async (cloudData) => {
-        if (!active) return;
+      .then((cloudData) => {
         if (cloudData) {
           setResult(normalizeResult(JSON.stringify(cloudData)));
-          setIsLoadingResult(false);
-          try {
-            const { saveResult } = await import("@/lib/session/videoStore");
-            await saveResult(resultId, cloudData);
-          } catch {}
-          return;
-        }
-
-        const raw = readResultRaw(resultId);
-        if (raw) {
-          setResult(normalizeResult(raw));
-          setIsLoadingResult(false);
-          return;
-        }
-
-        getResult(resultId)
-          .then((stored) => {
-            if (!active) return;
-            if (stored) {
-              setResult(normalizeResult(JSON.stringify(stored)));
-              writeResult(resultId, stored);
-            } else {
-              setResult(null);
-            }
-            setIsLoadingResult(false);
-          })
-          .catch(() => {
-            if (!active) return;
-            setResult(null);
-            setIsLoadingResult(false);
+          // Transparently cache to IndexedDB for local offline use
+          import("@/lib/session/videoStore").then(({ saveResult }) => {
+            saveResult(resultId, cloudData).catch(() => {});
           });
-      })
-      .catch((err) => {
-        console.error("Cloud fetch failed:", err);
-        if (!active) return;
-
-        const raw = readResultRaw(resultId);
-        if (raw) {
-          setResult(normalizeResult(raw));
         } else {
-          setResult(null);
+          // Fallback to old storage
+          const raw = readResultRaw(resultId);
+          if (raw) {
+            setResult(normalizeResult(raw));
+          } else {
+            getResult(resultId).then((stored) => {
+              if (stored) {
+                setResult(normalizeResult(JSON.stringify(stored)));
+                writeResult(resultId, stored);
+              }
+            }).catch(() => {});
+          }
         }
-        setIsLoadingResult(false);
+      })
+      .catch((e) => {
+        console.error("Failed to fetch from cloud:", e);
+        // Fallback on error
+        const raw = readResultRaw(resultId);
+        if (raw) setResult(normalizeResult(raw));
       });
+  }, [resultId]);
+
+  useEffect(() => {
+    if (result) {
+      const embedded = result as unknown as ResultWithClinicalAssessment;
+      const linkedClinicalAssessment =
+        embedded.clinicalAssessment ?? embedded.session?.clinicalAssessment ?? null;
+      if (linkedClinicalAssessment) {
+        setSessionClinicalAssessment(linkedClinicalAssessment);
+        return;
+      }
+    }
 
     const session = readSession<{ clinicalAssessment?: SessionClinicalAssessment }>();
     if (session?.clinicalAssessment) {
       setSessionClinicalAssessment(session.clinicalAssessment);
     }
-
-    return () => {
-      active = false;
-    };
-  }, [resultId]);
+  }, [result, resultId]);
 
   useEffect(() => {
-    if (!result) {
-      setVideoUrl(null);
-      return;
-    }
+    if (!result || result.run.classification !== "real_analysis") return;
 
-    const resolvedResult = result;
+    const sessionId =
+      result.trace?.sessionId ??
+      (() => {
+        const session = readSession<{ sessionId?: string }>();
+        return session?.sessionId ?? null;
+      })();
+
+    if (!sessionId) return;
+
     let objectUrl: string | null = null;
-    let active = true;
-
-    async function loadVideo() {
-      const persistedFallbackVideoUrl =
-        resolvedResult.videoUrl ??
-        (resolvedResult.run.sourceType === "manifest_hero"
-          ? formatDemoVideoPath(resolvedResult.run.sourceClipFilename)
-          : null);
-
-      if (resolvedResult.run.classification !== "real_analysis") {
-        if (active) {
-          setVideoUrl(
-            persistedFallbackVideoUrl ??
-              formatDemoVideoPath(resolvedResult.run.sourceClipFilename)
-          );
-        }
-        return;
-      }
-
-      const sessionId =
-        resolvedResult.trace?.sessionId ??
-        (() => {
-          const session = readSession<{ sessionId?: string }>();
-          return session?.sessionId ?? null;
-        })();
-
-      if (!sessionId) {
-        if (active) setVideoUrl(persistedFallbackVideoUrl);
-        return;
-      }
-
-      try {
-        const { getVideo } = await import("@/lib/session/videoStore");
-        const videoData = await getVideo(sessionId);
-        if (!videoData?.blob) {
-          if (active) setVideoUrl(persistedFallbackVideoUrl);
-          return;
-        }
-
+    import("@/lib/session/videoStore")
+      .then(({ getVideo }) => getVideo(sessionId))
+      .then((videoData) => {
+        if (!videoData?.blob) return;
         objectUrl = URL.createObjectURL(videoData.blob);
-        if (active) setVideoUrl(objectUrl);
-      } catch {
-        if (active) setVideoUrl(persistedFallbackVideoUrl);
-      }
-    }
-
-    void loadVideo();
+        setVideoUrl(objectUrl);
+      })
+      .catch(() => {
+        setVideoUrl(null);
+      });
 
     return () => {
-      active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [result]);
@@ -642,11 +601,11 @@ export default function ResultsPage() {
   };
 
   useEffect(() => {
-    if (!isMobileAssistantOpen) {
+    if (!isAssistantOpen) {
       const toggle = document.getElementById("assistant-toggle-button") as HTMLButtonElement | null;
       toggle?.focus();
     }
-  }, [isMobileAssistantOpen]);
+  }, [isAssistantOpen]);
 
   if (!result) {
     return (
@@ -837,7 +796,7 @@ export default function ResultsPage() {
         </div>
 
         <Card className="relative overflow-hidden border-0 bg-white/60 backdrop-blur-2xl shadow-xl shadow-black/5 ring-1 ring-white/80 transition-all hover:shadow-2xl hover:bg-white/80">
-          <div className="absolute inset-0 bg-linear-to-br from-white/40 to-transparent pointer-events-none" />
+          <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-transparent pointer-events-none" />
           <CardContent className="relative grid gap-6 p-6 sm:grid-cols-3">
             <div className="group">
               <p className="text-[11px] font-extrabold uppercase tracking-widest text-[#5c7a76] mb-2">Overall observation</p>
@@ -892,7 +851,7 @@ export default function ResultsPage() {
         </div>
 
         {result.clinicianFeedback && (
-          <div className="relative overflow-hidden rounded-3xl bg-indigo-50/80 p-6 shadow-md ring-1 ring-indigo-200/50 backdrop-blur-sm border-l-4 border-l-indigo-500">
+          <div className="relative overflow-hidden rounded-[1.5rem] bg-indigo-50/80 p-6 shadow-md ring-1 ring-indigo-200/50 backdrop-blur-sm border-l-4 border-l-indigo-500">
             <div className="absolute top-0 right-0 p-4 opacity-[0.03] pointer-events-none transform translate-x-4 -translate-y-4">
               <MessageSquare className="h-40 w-40 text-indigo-900" />
             </div>
@@ -905,7 +864,7 @@ export default function ResultsPage() {
                   New Message From Your Clinical Care Team
                 </p>
                 <p className="text-xl font-medium text-slate-800 leading-relaxed max-w-3xl">
-                  &quot;{result.clinicianFeedback.note}&quot;
+                  "{result.clinicianFeedback.note}"
                 </p>
                 <p className="text-xs font-semibold text-indigo-900/50 mt-3 block">
                   Sent on {new Date(result.clinicianFeedback.updatedAt).toLocaleString()}
@@ -918,7 +877,7 @@ export default function ResultsPage() {
         {activeTab === "summary" && (
           <div className="space-y-4">
             <div
-              className={`relative overflow-hidden rounded-3xl p-6 shadow-lg shadow-black/5 ring-1 border-0 ${FOLLOWUP_CALLOUT_STYLES[followupPriority]}`}
+              className={`relative overflow-hidden rounded-[1.5rem] p-6 shadow-lg shadow-black/5 ring-1 border-0 ${FOLLOWUP_CALLOUT_STYLES[followupPriority]}`}
               role={followupPriority === "specialist" ? "alert" : undefined}
             >
               <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none transform translate-x-4 -translate-y-4">
@@ -1343,24 +1302,8 @@ export default function ResultsPage() {
         </Button>
       </div>
 
-      <div className="fixed bottom-4 right-4 top-[5.4rem] z-40 hidden w-90 print:hidden lg:block">
-        <div className="h-full overflow-hidden rounded-2xl border bg-background shadow-2xl">
-          <AssistantPanel
-            resultId={result.id}
-            metrics={assistantMetrics}
-            risk_category={assistantRiskCategory}
-            context={assistantContext}
-            issueHotspots={assistantIssueHotspots}
-            isOpen
-            showToggleControl={false}
-            autoExecuteActions
-            onFocusIssue={handleFocusIssue}
-          />
-        </div>
-      </div>
-
-      <div className="fixed bottom-3 right-3 z-50 flex flex-col items-end gap-2 print:hidden sm:bottom-4 sm:right-4 lg:hidden">
-        {isMobileAssistantOpen && (
+      <div className="fixed bottom-3 right-3 z-50 flex flex-col items-end gap-2 print:hidden sm:bottom-4 sm:right-4">
+        {isAssistantOpen && (
           <div
             id="ai-assistant-panel"
             className="h-[clamp(22rem,68dvh,42rem)] max-h-[calc(100dvh-4.5rem)] w-[min(34rem,calc(100vw-1rem))] overflow-hidden rounded-2xl shadow-2xl"
@@ -1371,11 +1314,9 @@ export default function ResultsPage() {
               risk_category={assistantRiskCategory}
               context={assistantContext}
               issueHotspots={assistantIssueHotspots}
-              isOpen={isMobileAssistantOpen}
-              showToggleControl
-              autoExecuteActions
+              isOpen={isAssistantOpen}
               onFocusIssue={handleFocusIssue}
-              onToggle={() => setIsMobileAssistantOpen(false)}
+              onToggle={() => setIsAssistantOpen(false)}
             />
           </div>
         )}
@@ -1384,13 +1325,13 @@ export default function ResultsPage() {
           id="assistant-toggle-button"
           variant="outline"
           size="sm"
-          onClick={() => setIsMobileAssistantOpen((prev) => !prev)}
+          onClick={() => setIsAssistantOpen((prev) => !prev)}
           className="shadow-lg"
-          aria-expanded={isMobileAssistantOpen}
+          aria-expanded={isAssistantOpen}
           aria-controls="ai-assistant-panel"
         >
           <MessageCircle className="mr-2 h-5 w-5" />
-          {isMobileAssistantOpen ? "Close Assistant" : "Ask AI"}
+          {isAssistantOpen ? "Close Assistant" : "Ask AI"}
         </Button>
       </div>
     </div>

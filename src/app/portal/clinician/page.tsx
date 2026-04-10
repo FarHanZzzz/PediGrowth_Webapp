@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -18,7 +18,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { collectResultIds, readResultRaw } from "@/lib/session/sessionStorage";
-import { fetchRecentResultsFromCloud, type CloudResultRecord } from "@/lib/db/cloudStorage";
 import {
   CONCERN_LABELS,
   FOLLOWUP_BADGE_STYLES,
@@ -66,7 +65,7 @@ interface PatientRow {
   feedbackUpdatedAt: string | null;
 }
 
-function buildPatientsFromSessionStorage(): PatientRow[] {
+function loadPatients(): PatientRow[] {
   if (typeof window === "undefined") return [];
   const ids = collectResultIds(window.sessionStorage);
   const rows: PatientRow[] = [];
@@ -101,46 +100,6 @@ function buildPatientsFromSessionStorage(): PatientRow[] {
   });
 }
 
-function buildPatientsFromCloud(records: CloudResultRecord[]): PatientRow[] {
-  const rows: PatientRow[] = [];
-
-  for (const record of records) {
-    const payload = (record.payload ?? null) as ParsedResult | null;
-    if (!payload || typeof payload !== "object") {
-      continue;
-    }
-
-    const concernLevel = String(payload?.concerns?.overallLevel ?? "none");
-    rows.push({
-      id: record.id,
-      childName: String(payload?.session?.nickname ?? "Child"),
-      ageMonths: typeof payload?.session?.ageMonths === "number" ? payload.session.ageMonths : null,
-      analyzedAt:
-        payload?.analyzedAt ??
-        payload?.run?.analyzedAt ??
-        record.updated_at ??
-        record.created_at ??
-        null,
-      concernLevel,
-      concernLabel: CONCERN_LABELS[toConcernLevel(concernLevel)],
-      followupPriority: String(payload?.concerns?.followupPriority ?? "routine"),
-      qualityResult: String(payload?.quality?.result ?? "unknown"),
-      status: deriveStatus(payload),
-      summary: payload?.reports?.caregiver?.observationsText ?? null,
-      hasPublishedFeedback:
-        typeof payload?.clinicianFeedback?.note === "string" && payload.clinicianFeedback.note.trim().length > 0,
-      feedbackUpdatedAt:
-        typeof payload?.clinicianFeedback?.updatedAt === "string" ? payload.clinicianFeedback.updatedAt : null,
-    });
-  }
-
-  return rows.sort((a, b) => {
-    const at = a.analyzedAt ? Date.parse(a.analyzedAt) : 0;
-    const bt = b.analyzedAt ? Date.parse(b.analyzedAt) : 0;
-    return bt - at;
-  });
-}
-
 function statusBadgeProps(status: RowStatus) {
   if (status === "stable") return { label: "Stable", cls: FOLLOWUP_BADGE_STYLES.routine, Icon: CheckCircle2 };
   if (status === "retake") return { label: "Retake Needed", cls: RUN_TONE_BADGE_STYLES.destructive, Icon: RefreshCw };
@@ -148,77 +107,7 @@ function statusBadgeProps(status: RowStatus) {
 }
 
 export default function ClinicianPortalPage() {
-  const [localPatients, setLocalPatients] = useState<PatientRow[]>([]);
-  const [cloudPatients, setCloudPatients] = useState<PatientRow[]>([]);
-
-  useEffect(() => {
-    let active = true;
-
-    const hydrateLocal = () => {
-      if (!active) return;
-      setLocalPatients(buildPatientsFromSessionStorage());
-    };
-
-    hydrateLocal();
-    const localInterval = window.setInterval(hydrateLocal, 8000);
-
-    return () => {
-      active = false;
-      window.clearInterval(localInterval);
-    };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-
-    const hydrateCloud = () => {
-      fetchRecentResultsFromCloud(200)
-        .then((records) => {
-          if (!active) return;
-          setCloudPatients(buildPatientsFromCloud(records));
-        })
-        .catch(() => {
-          if (!active) return;
-          setCloudPatients([]);
-        });
-    };
-
-    hydrateCloud();
-    const cloudInterval = window.setInterval(hydrateCloud, 15000);
-
-    return () => {
-      active = false;
-      window.clearInterval(cloudInterval);
-    };
-  }, []);
-
-  const patients = useMemo(() => {
-    const byId = new Map<string, PatientRow>();
-
-    for (const row of cloudPatients) {
-      byId.set(row.id, row);
-    }
-
-    for (const row of localPatients) {
-      const existing = byId.get(row.id);
-      if (!existing) {
-        byId.set(row.id, row);
-        continue;
-      }
-
-      const existingTs = existing.analyzedAt ? Date.parse(existing.analyzedAt) : 0;
-      const rowTs = row.analyzedAt ? Date.parse(row.analyzedAt) : 0;
-      if (rowTs > existingTs) {
-        byId.set(row.id, row);
-      }
-    }
-
-    return Array.from(byId.values()).sort((a, b) => {
-      const at = a.analyzedAt ? Date.parse(a.analyzedAt) : 0;
-      const bt = b.analyzedAt ? Date.parse(b.analyzedAt) : 0;
-      return bt - at;
-    });
-  }, [cloudPatients, localPatients]);
+  const patients = useMemo(() => loadPatients(), []);
 
   const stats = useMemo(() => ({
     total: patients.length,

@@ -8,7 +8,6 @@ import {
   Copy,
   Download,
   FileText,
-  Loader2,
   Printer,
   RefreshCw,
   Stethoscope,
@@ -142,7 +141,6 @@ export default function ClinicianResultPage() {
 
   const {
     result,
-    isLoading,
     videoUrl,
     exportAvailable,
     keyFrames,
@@ -219,17 +217,6 @@ export default function ClinicianResultPage() {
     const timer = window.setTimeout(() => setShareLinkStatus(null), 4000);
     return () => window.clearTimeout(timer);
   }, [shareLinkStatus]);
-
-  if (isLoading) {
-    return (
-      <div className="flex min-h-dvh items-center justify-center px-4">
-        <div className="space-y-4 text-center">
-          <Loader2 className="mx-auto h-10 w-10 animate-spin text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">Loading result...</p>
-        </div>
-      </div>
-    );
-  }
 
   if (!result) {
     return (
@@ -907,23 +894,9 @@ export default function ClinicianResultPage() {
                     showAdvancedControls={false}
                   />
                 ) : hasTrace ? (
-                  exportAvailable && result.run.exportArtifactPath ? (
-                    <div className="space-y-2">
-                      <p className="text-xs text-muted-foreground">
-                        Source video is unavailable in local storage. Showing exported hero playback.
-                      </p>
-                      <video
-                        src={result.run.exportArtifactPath}
-                        controls
-                        playsInline
-                        className="w-full rounded-lg border bg-black"
-                      />
-                    </div>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">
-                      Trace is present, but source video is unavailable in local storage.
-                    </p>
-                  )
+                  <p className="text-xs text-muted-foreground">
+                    Trace is present, but source video is unavailable in local storage.
+                  </p>
                 ) : (
                   <p className="text-xs text-muted-foreground">
                     Full video evidence requires an analysis trace.
