@@ -284,6 +284,18 @@ function formatDomainLabel(domain: string): string {
   return domain.charAt(0).toUpperCase() + domain.slice(1).replace(/([A-Z])/g, " $1");
 }
 
+function formatDemoVideoPath(sourceClipFilename: string | null): string | null {
+  if (!sourceClipFilename) return null;
+  if (
+    sourceClipFilename.startsWith("/") ||
+    sourceClipFilename.startsWith("http://") ||
+    sourceClipFilename.startsWith("https://")
+  ) {
+    return sourceClipFilename;
+  }
+  return `/demo/videos/${sourceClipFilename}`;
+}
+
 const AssistantPanel = dynamic(() => import("@/components/results/AssistantPanel"), {
   ssr: false,
   loading: () => <div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">Loading assistant...</div>,
@@ -378,30 +390,63 @@ export default function ResultsPage() {
   }, [result, resultId]);
 
   useEffect(() => {
-    if (!result || result.run.classification !== "real_analysis") return;
+    if (!result) {
+      setVideoUrl(null);
+      return;
+    }
 
-    const sessionId =
-      result.trace?.sessionId ??
-      (() => {
-        const session = readSession<{ sessionId?: string }>();
-        return session?.sessionId ?? null;
-      })();
-
-    if (!sessionId) return;
-
+    const resolvedResult = result;
     let objectUrl: string | null = null;
-    import("@/lib/session/videoStore")
-      .then(({ getVideo }) => getVideo(sessionId))
-      .then((videoData) => {
-        if (!videoData?.blob) return;
+    let active = true;
+
+    async function loadVideo() {
+      const persistedFallbackVideoUrl =
+        resolvedResult.videoUrl ??
+        (resolvedResult.run.sourceType === "manifest_hero"
+          ? formatDemoVideoPath(resolvedResult.run.sourceClipFilename)
+          : null);
+
+      if (resolvedResult.run.classification !== "real_analysis") {
+        if (active) {
+          setVideoUrl(
+            persistedFallbackVideoUrl ??
+              formatDemoVideoPath(resolvedResult.run.sourceClipFilename)
+          );
+        }
+        return;
+      }
+
+      const sessionId =
+        resolvedResult.trace?.sessionId ??
+        (() => {
+          const session = readSession<{ sessionId?: string }>();
+          return session?.sessionId ?? null;
+        })();
+
+      if (!sessionId) {
+        if (active) setVideoUrl(persistedFallbackVideoUrl);
+        return;
+      }
+
+      try {
+        const { getVideo } = await import("@/lib/session/videoStore");
+        const videoData = await getVideo(sessionId);
+        if (!videoData?.blob) {
+          if (active) setVideoUrl(persistedFallbackVideoUrl);
+          return;
+        }
+
         objectUrl = URL.createObjectURL(videoData.blob);
-        setVideoUrl(objectUrl);
-      })
-      .catch(() => {
-        setVideoUrl(null);
-      });
+        if (active) setVideoUrl(objectUrl);
+      } catch {
+        if (active) setVideoUrl(persistedFallbackVideoUrl);
+      }
+    }
+
+    void loadVideo();
 
     return () => {
+      active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [result]);
