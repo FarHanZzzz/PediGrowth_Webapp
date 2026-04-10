@@ -29,7 +29,8 @@ import HowAnalysisWorksPanel from "@/components/results/HowAnalysisWorksPanel";
 import GMFCSCard from "@/components/clinical/GMFCSCard";
 import MotorDelayAssessmentSummary from "@/components/clinical/MotorDelayAssessmentSummary";
 import GMAAssessmentCard from "@/components/clinical/GMAAssessmentCard";
-import { readResultRaw, readSession, writeResult } from "@/lib/session/sessionStorage";
+import { readSession, writeResult } from "@/lib/session/sessionStorage";
+import { saveResultToCloud } from "@/lib/db/cloudStorage";
 import type { ClinicianFeedbackPayload } from "@/lib/session/analysisSession";
 import type { MotorDelayAssessment, GMAScreeningResult } from "@/lib/clinical/frameworks";
 import { isGMAApplicableByMonths } from "@/lib/clinical/frameworks";
@@ -517,7 +518,7 @@ export default function ClinicianResultPage() {
     }
   };
 
-  const handleSaveFeedbackForParent = () => {
+  const handleSaveFeedbackForParent = async () => {
     const trimmedNote = clinicianNote.trim();
     if (!trimmedNote) {
       setFeedbackSyncStatus({
@@ -527,8 +528,7 @@ export default function ClinicianResultPage() {
       return;
     }
 
-    const raw = readResultRaw(resultId);
-    if (!raw) {
+    if (!result) {
       setFeedbackSyncStatus({
         tone: "error",
         message: "Result record was not found in this session. Reopen the result and try again.",
@@ -536,8 +536,9 @@ export default function ClinicianResultPage() {
       return;
     }
 
+    setFeedbackSyncStatus({ tone: "success", message: "Saving..." });
+
     try {
-      const parsed = JSON.parse(raw) as Record<string, unknown>;
       const updatedAt = new Date().toISOString();
       const feedbackPayload: ClinicianFeedbackPayload = {
         note: trimmedNote,
@@ -547,10 +548,13 @@ export default function ClinicianResultPage() {
       };
 
       const updated = {
-        ...parsed,
+        ...result,
         clinicianFeedback: feedbackPayload,
       };
+      
       writeResult(resultId, updated);
+      await saveResultToCloud(resultId, updated);
+      
       setPublishedFeedbackAt(updatedAt);
       setFeedbackSyncStatus({
         tone: "success",
@@ -559,26 +563,28 @@ export default function ClinicianResultPage() {
     } catch {
       setFeedbackSyncStatus({
         tone: "error",
-        message: "Could not persist feedback due to a malformed local result payload.",
+        message: "Could not persist feedback. Check connection and try again.",
       });
     }
   };
 
-  const handleClearPublishedFeedback = () => {
-    const raw = readResultRaw(resultId);
-    if (!raw) {
+  const handleClearPublishedFeedback = async () => {
+    if (!result) {
       setFeedbackSyncStatus({
         tone: "error",
         message: "Result record was not found in this session.",
       });
       return;
     }
+    
+    setFeedbackSyncStatus({ tone: "success", message: "Clearing..." });
 
     try {
-      const parsed = JSON.parse(raw) as Record<string, unknown>;
-      const updated = { ...parsed } as Record<string, unknown>;
+      const updated = { ...result } as Record<string, unknown>;
       delete updated.clinicianFeedback;
+      
       writeResult(resultId, updated);
+      await saveResultToCloud(resultId, updated);
 
       setClinicianNote("");
       setPublishedFeedbackAt(null);
@@ -589,16 +595,16 @@ export default function ClinicianResultPage() {
     } catch {
       setFeedbackSyncStatus({
         tone: "error",
-        message: "Could not clear feedback due to a malformed local result payload.",
+        message: "Could not clear feedback. Check connection and try again.",
       });
     }
   };
 
   return (
-    <div className="clinician-packet min-h-dvh bg-linear-to-b from-background to-muted/30">
+    <div className="clinician-packet min-h-dvh bg-slate-50/50 pb-12">
       {isBestEffort && (
         <div className="print-hidden border-b border-amber-200 bg-amber-50 px-4 py-2">
-          <p className="text-xs text-amber-700">
+          <p className="text-xs text-amber-700 font-medium">
             Preliminary packet: some domains are marked as not assessed due to limited confidence.
           </p>
         </div>
@@ -628,16 +634,16 @@ export default function ClinicianResultPage() {
             Decision-first summary for clinical review. Advanced evidence is collapsed in section 7.
           </p>
 
-          <div className="print-hidden inline-flex w-full max-w-lg items-center rounded-xl border border-border/60 bg-surface-container-low p-1">
+          <div className="print-hidden inline-flex w-full max-w-lg items-center rounded-xl border border-slate-200/60 bg-white/60 p-1 backdrop-blur-sm shadow-xs">
             {CLINICIAN_TABS.map((tab) => (
               <button
                 key={tab.key}
                 type="button"
                 onClick={() => setActiveTab(tab.key)}
-                className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-semibold tracking-wide transition-all duration-200 ${
                   activeTab === tab.key
-                    ? "bg-surface-container-lowest text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
+                    ? "bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200"
+                    : "text-slate-500 hover:text-slate-800 hover:bg-white/50"
                 }`}
               >
                 {tab.label}
@@ -649,33 +655,33 @@ export default function ClinicianResultPage() {
         <div className={activeTab === "snapshot" ? "space-y-6" : "hidden print:block print:space-y-6"}>
           
           {/* Dashboard Row 1: Hero Banner Component */}
-          <Card className={`print-section border ${FOLLOWUP_CALLOUT_STYLES[followUpPriority]} shadow-sm`}>
+          <Card className={`print-section border bg-white/90 backdrop-blur-sm transition-all duration-300 hover:shadow-md ${FOLLOWUP_CALLOUT_STYLES[followUpPriority]} shadow-sm`}>
             <CardContent className="p-0">
               <div className="flex flex-col md:flex-row">
                 {/* Left side: Key Clinical Signal */}
-                <div className="flex flex-1 flex-col justify-center border-b p-5 md:border-b-0 md:border-r border-border/40">
-                  <p className="text-[11px] font-bold uppercase tracking-widest opacity-80">Overall Diagnostic Signal</p>
+                <div className="flex flex-1 flex-col justify-center border-b p-5 md:border-b-0 md:border-r border-slate-200/60 bg-slate-50/30">
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Overall Diagnostic Signal</p>
                   <div className="mt-2 flex items-center gap-3">
-                    <Badge variant="outline" className={`text-xs px-2.5 py-1 uppercase tracking-wide font-bold ${CONCERN_BADGE_STYLES[overallConcernLevel]}`}>
+                    <Badge variant="outline" className={`text-xs px-2.5 py-1 uppercase tracking-wider font-bold shadow-xs ${CONCERN_BADGE_STYLES[overallConcernLevel]}`}>
                       {overallConcernLabel}
                     </Badge>
                   </div>
-                  <p className="mt-4 text-[13px] font-medium leading-relaxed opacity-90">{observedSummary}</p>
+                  <p className="mt-4 text-[14px] font-medium leading-relaxed text-slate-800">{observedSummary}</p>
                 </div>
                 {/* Right side: Action Plan & Context */}
                 <div className="flex-1 p-5">
                   <div className="flex items-start gap-2">
                     <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 opacity-80" />
                     <div>
-                      <p className="font-bold tracking-tight">{followUpRecommendation}</p>
-                      <p className="mt-1 text-[13px] opacity-80">{FOLLOWUP_CALLOUT_TEXT[followUpPriority]}</p>
+                      <p className="font-bold tracking-tight text-slate-900">{followUpRecommendation}</p>
+                      <p className="mt-1 text-[13px] text-slate-600">{FOLLOWUP_CALLOUT_TEXT[followUpPriority]}</p>
                     </div>
                   </div>
-                  <div className="mt-4 flex flex-col gap-1 rounded-md bg-background/40 p-3 text-xs leading-relaxed text-foreground/80 opacity-90">
-                    <span className="mb-0.5 font-semibold">Contextual Summary</span>
-                    <p>Case: {result.session.nickname} • View: {result.concerns.viewLabel}</p>
+                  <div className="mt-4 flex flex-col gap-1 rounded-lg bg-slate-50/80 p-3 text-xs leading-relaxed text-slate-700 border border-slate-100">
+                    <span className="mb-0.5 font-semibold text-slate-900">Contextual Summary</span>
+                    <p>Case: <span className="font-medium">{result.session.nickname}</span> • View: {result.concerns.viewLabel}</p>
                     <p>Source video: {result.run.sourceClipFilename ?? "Uploaded clip"}</p>
-                    {packetTimestamp && <p className="opacity-80">Captured: {new Date(packetTimestamp).toLocaleString()}</p>}
+                    {packetTimestamp && <p className="text-slate-500">Captured: {new Date(packetTimestamp).toLocaleString()}</p>}
                   </div>
                 </div>
               </div>
@@ -705,20 +711,20 @@ export default function ClinicianResultPage() {
                   const evidence = evidenceByDomain.get(domain.key);
 
                   return (
-                    <div key={domain.key} className="rounded-xl border bg-card/60 p-4 shadow-sm transition-shadow hover:shadow-md">
-                      <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide mb-3">{domain.label}</p>
+                    <div key={domain.key} className="relative overflow-hidden rounded-xl border border-slate-200/60 bg-white/80 p-4 shadow-sm backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md">
+                      <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-3">{domain.label}</p>
                       <div className="flex flex-col gap-2 items-start">
                         <Badge
                           variant="outline"
-                          className={`text-[11px] px-2 py-0.5 font-medium ${
+                          className={`text-[11px] px-2.5 py-0.5 font-bold shadow-xs ${
                             isSuppressed
-                              ? "border-amber-300 bg-amber-100 text-amber-900"
+                              ? "border-amber-300 bg-amber-50 text-amber-800"
                               : CONCERN_BADGE_STYLES[level]
                           }`}
                         >
                           {isSuppressed ? "Not assessed" : CONCERN_LABELS[level]}
                         </Badge>
-                        <p className="text-xs text-muted-foreground leading-relaxed mt-1 line-clamp-2">
+                        <p className="text-[12px] text-slate-600 leading-relaxed mt-1 line-clamp-3">
                           {evidence?.explanation ?? "No detailed narrative available."}
                         </p>
                       </div>
@@ -768,7 +774,9 @@ export default function ClinicianResultPage() {
               )}
 
               {/* GMFCS */}
-              <GMFCSCard interactive={true} />
+              <div className="max-h-[600px] overflow-y-auto pr-1 pb-1 scrollbar-thin scrollbar-thumb-slate-200">
+                <GMFCSCard interactive={true} />
+              </div>
 
               {/* GMA Assessment Card */}
               {(() => {
@@ -834,49 +842,49 @@ export default function ClinicianResultPage() {
           )}
         </div>
 
-        <Card className={`print-section print-hidden ${activeTab === "evidence" ? "" : "hidden"}`}>
+        <Card className={`print-section print-hidden border-slate-200/60 bg-white/60 shadow-sm backdrop-blur-sm transition-all duration-300 ${activeTab === "evidence" ? "" : "hidden"}`}>
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <Video className="h-4 w-4" />
+            <CardTitle className="flex items-center gap-2 text-sm text-slate-800">
+              <Video className="h-4 w-4 text-slate-500" />
               8. Appendix / Advanced Evidence
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-4 rounded-lg border bg-muted/20 p-3">
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div className="rounded-lg border bg-background p-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Why this result appears</p>
+            <div className="space-y-4 rounded-xl border border-slate-200/40 bg-slate-50/50 p-4 backdrop-blur-[2px]">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="rounded-xl border border-slate-200/60 bg-white/80 p-5 shadow-[inset_0_1px_4px_rgba(0,0,0,0.01)] backdrop-blur-sm transition-all duration-300 hover:shadow-md">
+                    <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500 mb-3">Why this result appears</p>
                     {evidenceHighlights.length > 0 ? (
-                      <ul className="mt-2 space-y-1.5 text-xs text-muted-foreground">
+                      <ul className="mt-2 space-y-2 text-[13px] text-slate-600 leading-relaxed">
                         {evidenceHighlights.map((entry) => (
                           <li key={entry.domain}>
-                            <span className="font-medium text-foreground">{formatDomainLabel(entry.domain)}:</span> {entry.explanation}
+                            <span className="font-semibold text-slate-800">{formatDomainLabel(entry.domain)}:</span> {entry.explanation}
                           </li>
                         ))}
                       </ul>
                     ) : (
-                      <p className="mt-2 text-xs text-muted-foreground">No domain-level evidence narrative was generated.</p>
+                      <p className="mt-2 text-xs text-slate-500">No domain-level evidence narrative was generated.</p>
                     )}
                   </div>
 
-                  <div className="rounded-lg border bg-background p-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Measured movement signals</p>
-                    <div className="mt-2 space-y-2">
+                  <div className="rounded-xl border border-slate-200/60 bg-white/80 p-5 shadow-[inset_0_1px_4px_rgba(0,0,0,0.01)] backdrop-blur-sm transition-all duration-300 hover:shadow-md">
+                    <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500 mb-3">Measured movement signals</p>
+                    <div className="mt-2 space-y-2.5">
                       {Object.entries(result.features).map(([key, metric]) => (
                         <div
                           key={key}
-                          className={`grid grid-cols-[1fr_auto] items-center gap-2 text-xs ${metric.suppressed ? "opacity-45" : ""}`}
+                          className={`grid grid-cols-[1fr_auto] items-center gap-2 text-[13px] ${metric.suppressed ? "opacity-45" : ""}`}
                         >
                           <div>
-                            <p className="font-medium">{formatDomainLabel(key)}</p>
+                            <p className="font-medium text-slate-700">{formatDomainLabel(key)}</p>
                             {metric.limitedReason && (
-                              <p className="text-[11px] text-muted-foreground">{metric.limitedReason}</p>
+                              <p className="text-[11px] text-slate-400">{metric.limitedReason}</p>
                             )}
                           </div>
-                          <p className="font-mono tabular-nums">
+                          <p className="font-mono tabular-nums text-slate-800">
                             {metric.suppressed ? "-" : `${metric.value}${metric.unit ? ` ${metric.unit}` : ""}`}
                             {!metric.suppressed && (
-                              <span className="ml-1 text-muted-foreground">({Math.round(metric.confidence * 100)}%)</span>
+                              <span className="ml-1 text-slate-500">({Math.round(metric.confidence * 100)}%)</span>
                             )}
                           </p>
                         </div>
@@ -920,39 +928,39 @@ export default function ClinicianResultPage() {
                     lrRatio >= 0.85 ? "text-emerald-700" :
                     lrRatio >= 0.65 ? "text-amber-700" : "text-red-700";
                   return (
-                    <div className="rounded-lg border bg-background p-3">
-                      <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Gait Cycle Summary — Pipeline Output</p>
-                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                        <div className="rounded-md bg-muted/40 px-3 py-2">
-                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Detected Steps</p>
-                          <p className="text-lg font-semibold text-foreground">{p.detectedSteps}</p>
-                          <p className="text-[11px] text-muted-foreground">L: {p.leftSteps} · R: {p.rightSteps}</p>
+                    <div className="rounded-xl border border-slate-200/60 bg-white/80 p-5 shadow-[inset_0_1px_4px_rgba(0,0,0,0.01)] backdrop-blur-sm transition-all duration-300 hover:shadow-md">
+                      <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-slate-500">Gait Cycle Summary — Pipeline Output</p>
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                        <div className="rounded-lg bg-slate-50/80 border border-slate-100 px-4 py-3 pb-4">
+                          <p className="text-[10px] uppercase font-bold tracking-wide text-slate-500">Detected Steps</p>
+                          <p className="text-xl font-bold text-slate-800 mt-1">{p.detectedSteps}</p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">L: {p.leftSteps} · R: {p.rightSteps}</p>
                         </div>
-                        <div className="rounded-md bg-muted/40 px-3 py-2">
-                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Gait Cycles</p>
-                          <p className="text-lg font-semibold text-foreground">{cycles.length}</p>
-                          <p className="text-[11px] text-muted-foreground">{avgCycleMs !== null ? `~${avgCycleMs} ms avg` : "—"}</p>
+                        <div className="rounded-lg bg-slate-50/80 border border-slate-100 px-4 py-3 pb-4">
+                          <p className="text-[10px] uppercase font-bold tracking-wide text-slate-500">Gait Cycles</p>
+                          <p className="text-xl font-bold text-slate-800 mt-1">{cycles.length}</p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">{avgCycleMs !== null ? `~${avgCycleMs} ms avg` : "—"}</p>
                         </div>
-                        <div className="rounded-md bg-muted/40 px-3 py-2">
-                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Usable Frames</p>
-                          <p className="text-lg font-semibold text-foreground">{usablePct}%</p>
-                          <p className="text-[11px] text-muted-foreground">{p.usableFrames} / {p.totalFrames} frames</p>
+                        <div className="rounded-lg bg-slate-50/80 border border-slate-100 px-4 py-3 pb-4">
+                          <p className="text-[10px] uppercase font-bold tracking-wide text-slate-500">Usable Frames</p>
+                          <p className="text-xl font-bold text-slate-800 mt-1">{usablePct}%</p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">{p.usableFrames} / {p.totalFrames} frames</p>
                         </div>
-                        <div className="rounded-md bg-muted/40 px-3 py-2">
-                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Walk Direction</p>
-                          <p className="text-base font-semibold capitalize text-foreground">{p.direction}</p>
-                          <p className="text-[11px] text-muted-foreground">from classifier</p>
+                        <div className="rounded-lg bg-slate-50/80 border border-slate-100 px-4 py-3 pb-4">
+                          <p className="text-[10px] uppercase font-bold tracking-wide text-slate-500">Walk Direction</p>
+                          <p className="text-lg font-bold capitalize text-slate-800 mt-1">{p.direction}</p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">from classifier</p>
                         </div>
                       </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <span className={`text-xs font-medium ${symmetryClass}`}>{symmetryLabel}</span>
+                      <div className="mt-3.5 flex flex-wrap items-center gap-2">
+                        <span className={`text-xs font-semibold ${symmetryClass}`}>{symmetryLabel}</span>
                         {lrRatio !== null && (
-                          <span className="text-xs text-muted-foreground">(ratio: {lrRatio.toFixed(2)})</span>
+                          <span className="text-xs text-slate-400">(ratio: {lrRatio.toFixed(2)})</span>
                         )}
                         {p.lrTrackingStable ? (
-                          <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-[10px] text-emerald-800">L/R tracking stable</Badge>
+                          <Badge variant="outline" className="border-emerald-300 bg-emerald-50 bg-opacity-70 text-[10px] text-emerald-800 p-0.5 px-2">L/R Tracking Stable</Badge>
                         ) : (
-                          <Badge variant="outline" className="border-amber-300 bg-amber-50 text-[10px] text-amber-900">L/R tracking uncertain</Badge>
+                          <Badge variant="outline" className="border-amber-300 bg-amber-50 bg-opacity-70 text-[10px] text-amber-900 p-0.5 px-2">L/R Tracking Uncertain</Badge>
                         )}
                       </div>
                     </div>
@@ -1040,7 +1048,7 @@ export default function ClinicianResultPage() {
               <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                 Primary packet actions
               </p>
-              <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 <Button className="gap-2 text-xs" onClick={handlePrintPacket}>
                   <Printer className="h-3.5 w-3.5" />
                   Print packet
@@ -1096,14 +1104,6 @@ export default function ClinicianResultPage() {
                 Secondary navigation
               </p>
               <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                <Button
-                  variant="outline"
-                  className="gap-2 text-xs"
-                  onClick={() => router.push(`/results/${resultId}/refine`)}
-                >
-                  <FileText className="h-3.5 w-3.5" />
-                  Add follow-up context
-                </Button>
                 <Button
                   variant="outline"
                   className="gap-2 text-xs"
