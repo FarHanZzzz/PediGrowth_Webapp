@@ -907,9 +907,23 @@ export default function ClinicianResultPage() {
                     showAdvancedControls={false}
                   />
                 ) : hasTrace ? (
-                  <p className="text-xs text-muted-foreground">
-                    Trace is present, but source video is unavailable in local storage.
-                  </p>
+                  exportAvailable && result.run.exportArtifactPath ? (
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted-foreground">
+                        Source video is unavailable in local storage. Showing exported hero playback.
+                      </p>
+                      <video
+                        src={result.run.exportArtifactPath}
+                        controls
+                        playsInline
+                        className="w-full rounded-lg border bg-black"
+                      />
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Trace is present, but source video is unavailable in local storage.
+                    </p>
+                  )
                 ) : (
                   <p className="text-xs text-muted-foreground">
                     Full video evidence requires an analysis trace.

@@ -53,31 +53,10 @@ interface Citation {
   title: string;
 }
 
-type AssistantActionType =
-  | 'navigate'
-  | 'open_result'
-  | 'retake_clip'
-  | 'create_share_link'
-  | 'focus_issue';
-
-interface AssistantAction {
-  id: string;
-  type: AssistantActionType;
-  label: string;
-  auto_execute: boolean;
-  route?: string;
-  result_id?: string;
-  selector?: 'latest';
-  frame_index?: number;
-  timestamp_ms?: number;
-  reason?: string;
-}
-
 interface AssistantPayload {
   response: string;
   actionItems: string[];
   suggestedPrompts: string[];
-  actions: AssistantAction[];
   citations: Citation[];
   source: 'llm' | 'heuristic' | 'mock' | 'policy_refusal';
   usage: { input_tokens: number; output_tokens: number };
@@ -276,263 +255,6 @@ function toConversation(value: unknown): ConversationMessage[] {
     .slice(-MAX_HISTORY_MESSAGES);
 }
 
-function parseCloudContext(payload: Record<string, unknown>): Partial<NavigatorContext> {
-  const concerns =
-    payload.concerns && typeof payload.concerns === 'object'
-      ? (payload.concerns as Record<string, unknown>)
-      : null;
-  const quality =
-    payload.quality && typeof payload.quality === 'object'
-      ? (payload.quality as Record<string, unknown>)
-      : null;
-  const reports =
-    payload.reports && typeof payload.reports === 'object'
-      ? (payload.reports as Record<string, unknown>)
-      : null;
-  const caregiverReport =
-    reports?.caregiver && typeof reports.caregiver === 'object'
-      ? (reports.caregiver as Record<string, unknown>)
-      : null;
-
-  return {
-    summary: safeText(caregiverReport?.observationsText),
-    confidence_notes: safeText(quality?.confidenceNotes),
-    followup_priority: safeText(concerns?.followupPriority),
-    assessed_domains: Array.isArray(concerns?.assessedDomains)
-      ? concerns!.assessedDomains.filter((item): item is string => typeof item === 'string').slice(0, 8)
-      : [],
-    retake_suggestions: Array.isArray(quality?.retakeSuggestions)
-      ? quality!.retakeSuggestions.filter((item): item is string => typeof item === 'string').slice(0, 6)
-      : [],
-    quality_result: safeText(quality?.result),
-  };
-}
-
-async function groundContextFromCloud(
-  admin: AdminClient | null,
-  resultId: string | null,
-  context: NavigatorContext
-): Promise<{ context: NavigatorContext; detail: string }> {
-  if (!resultId) {
-    return { context, detail: 'No result_id provided; using client-supplied context only.' };
-  }
-
-  if (!admin) {
-    return {
-      context,
-      detail: 'Admin client unavailable; skipped cloud grounding and kept client context.',
-    };
-  }
-
-  try {
-    const { data, error } = await admin
-      .from('hackathon_results')
-      .select('payload')
-      .eq('id', resultId)
-      .maybeSingle();
-
-    if (error) {
-      return {
-        context,
-        detail: `Cloud grounding lookup failed for result_id=${resultId}; using client context only.`,
-      };
-    }
-
-    if (!data?.payload || typeof data.payload !== 'object') {
-      return {
-        context,
-        detail: `No cloud payload found for result_id=${resultId}; using client context only.`,
-      };
-    }
-
-    const cloudContext = parseCloudContext(data.payload as Record<string, unknown>);
-    const merged: NavigatorContext = {
-      summary: context.summary || cloudContext.summary || '',
-      confidence_notes: context.confidence_notes || cloudContext.confidence_notes || '',
-      followup_priority: context.followup_priority || cloudContext.followup_priority || '',
-      assessed_domains:
-        (context.assessed_domains?.length ?? 0) > 0
-          ? context.assessed_domains
-          : cloudContext.assessed_domains ?? [],
-      retake_suggestions:
-        (context.retake_suggestions?.length ?? 0) > 0
-          ? context.retake_suggestions
-          : cloudContext.retake_suggestions ?? [],
-      quality_result: context.quality_result || cloudContext.quality_result || '',
-      issue_hotspots: context.issue_hotspots ?? [],
-    };
-
-    return {
-      context: merged,
-      detail: `Cloud grounding enriched context for result_id=${resultId} where client fields were missing.`,
-    };
-  } catch {
-    return {
-      context,
-      detail: `Cloud grounding raised an unexpected error for result_id=${resultId}; using client context only.`,
-    };
-  }
-}
-
-function buildAssistantActions(
-  prompt: string,
-  resultId: string | null,
-  context: NavigatorContext
-): AssistantAction[] {
-  const lowered = prompt.toLowerCase();
-  const actions: AssistantAction[] = [];
-  const keys = new Set<string>();
-
-  const pushUnique = (key: string, action: Omit<AssistantAction, 'id'>) => {
-    if (keys.has(key)) return;
-    keys.add(key);
-    actions.push({
-      id: crypto.randomUUID(),
-      ...action,
-    });
-  };
-
-  if (/(history|past result|previous result)/i.test(lowered)) {
-    pushUnique('navigate:/history', {
-      type: 'navigate',
-      label: 'Open history',
-      auto_execute: true,
-      route: '/history',
-      reason: 'Navigate to historical assessments.',
-    });
-  }
-
-  if (/(start|intake)/i.test(lowered)) {
-    pushUnique('navigate:/start', {
-      type: 'navigate',
-      label: 'Open intake',
-      auto_execute: true,
-      route: '/start',
-      reason: 'Navigate to intake flow.',
-    });
-  }
-
-  if (/(capture|record|camera)/i.test(lowered)) {
-    pushUnique('navigate:/capture', {
-      type: 'navigate',
-      label: 'Open capture',
-      auto_execute: true,
-      route: '/capture',
-      reason: 'Navigate to capture flow.',
-    });
-  }
-
-  if (/parent portal/i.test(lowered)) {
-    pushUnique('navigate:/portal/parent', {
-      type: 'navigate',
-      label: 'Open parent portal',
-      auto_execute: true,
-      route: '/portal/parent',
-    });
-  }
-
-  if (/clinician portal/i.test(lowered)) {
-    pushUnique('navigate:/portal/clinician', {
-      type: 'navigate',
-      label: 'Open clinician portal',
-      auto_execute: true,
-      route: '/portal/clinician',
-    });
-  }
-
-  if (/admin portal/i.test(lowered)) {
-    pushUnique('navigate:/portal/admin', {
-      type: 'navigate',
-      label: 'Open admin portal',
-      auto_execute: true,
-      route: '/portal/admin',
-    });
-  }
-
-  if (/(home|dashboard)/i.test(lowered)) {
-    pushUnique('navigate:/', {
-      type: 'navigate',
-      label: 'Go home',
-      auto_execute: true,
-      route: '/',
-      reason: 'Navigate to home dashboard.',
-    });
-  }
-
-  const explicitResultId = prompt.match(/\br_[a-z0-9]+\b/i)?.[0] ?? null;
-  if (explicitResultId) {
-    pushUnique(`open_result:${explicitResultId}`, {
-      type: 'open_result',
-      label: `Open result ${explicitResultId}`,
-      auto_execute: true,
-      result_id: explicitResultId,
-      reason: 'User requested a specific result id.',
-    });
-  }
-
-  if (/(latest|most recent|newest)/i.test(lowered) && /(result|assessment|patient)/i.test(lowered)) {
-    pushUnique('open_result:latest', {
-      type: 'open_result',
-      label: 'Open latest result',
-      auto_execute: true,
-      selector: 'latest',
-      reason: 'User requested the latest result.',
-    });
-  }
-
-  if ((/clinician packet|clinician report|advanced evidence/i.test(lowered) || /open.*clinician/i.test(lowered)) && resultId) {
-    pushUnique(`navigate:/results/${resultId}/clinician`, {
-      type: 'navigate',
-      label: 'Open clinician packet',
-      auto_execute: true,
-      route: `/results/${resultId}/clinician`,
-      result_id: resultId,
-    });
-  }
-
-  if (/(retake|record again|another clip|re-record|redo clip)/i.test(lowered)) {
-    pushUnique('retake_clip', {
-      type: 'retake_clip',
-      label: 'Retake clip now',
-      auto_execute: true,
-      route: '/capture',
-      result_id: resultId ?? undefined,
-      reason: 'User requested a retake workflow.',
-    });
-  }
-
-  if (/(share|send)/i.test(lowered) && /(link|report|packet)/i.test(lowered)) {
-    pushUnique(`share:${resultId ?? 'active'}`, {
-      type: 'create_share_link',
-      label: 'Create share link',
-      auto_execute: true,
-      result_id: resultId ?? undefined,
-      reason: 'User requested sharing workflow.',
-    });
-  }
-
-  if (/(jump|focus|show|take me).*(issue|hotspot|frame|moment)/i.test(lowered)) {
-    const target = (context.issue_hotspots ?? []).slice().sort((a, b) => {
-      const rank = (severity: 'low' | 'medium' | 'high') =>
-        severity === 'high' ? 3 : severity === 'medium' ? 2 : 1;
-      return rank(b.severity) - rank(a.severity);
-    })[0];
-
-    if (target) {
-      pushUnique(`focus_issue:${target.frame_index}`, {
-        type: 'focus_issue',
-        label: `Focus hotspot: ${target.title}`,
-        auto_execute: true,
-        frame_index: target.frame_index,
-        timestamp_ms: target.timestamp_ms,
-        reason: 'User requested issue-focused navigation.',
-      });
-    }
-  }
-
-  return actions.slice(0, 4);
-}
-
 function buildContextSnippet(
   metrics: Record<string, number>,
   riskCategory: string,
@@ -704,8 +426,7 @@ function buildHeuristicPayload(
   riskCategory: string,
   context: NavigatorContext,
   citations: Citation[],
-  source: 'heuristic' | 'mock',
-  actions: AssistantAction[]
+  source: 'heuristic' | 'mock'
 ): AssistantPayload {
   const lowered = prompt.toLowerCase();
   const asksForIssueLocation =
@@ -852,7 +573,6 @@ function buildHeuristicPayload(
     response,
     actionItems: Array.from(new Set(actionItems)).slice(0, 5),
     suggestedPrompts,
-    actions,
     citations,
     source,
     usage: { input_tokens: 0, output_tokens: 0 },
@@ -1001,7 +721,6 @@ async function persistConversation(
           source: assistant.source,
           action_items: assistant.actionItems,
           suggested_prompts: assistant.suggestedPrompts,
-          actions: assistant.actions,
           citations: assistant.citations,
           orchestration_version: orchestration?.version ?? NAVIGATOR_ORCHESTRATION_VERSION,
           stage_trace: orchestration?.stageTrace ?? [],
@@ -1074,15 +793,11 @@ export async function POST(req: Request) {
       resultId
     );
 
-    const groundedContextResult = await groundContextFromCloud(admin, resultId, context);
-    const groundedContext = groundedContextResult.context;
-    const plannedActions = buildAssistantActions(prompt, resultId, groundedContext);
-
     traceStage({
       stage: 'evidence_normalization',
       strategy: 'deterministic',
       status: 'passed',
-      detail: `Request payload normalized to bounded context, metrics, and conversation windows. ${groundedContextResult.detail}`,
+      detail: 'Request payload normalized to bounded context, metrics, and conversation windows.',
     });
 
     const selectedCards = selectKnowledgeCards(prompt);
@@ -1118,7 +833,6 @@ export async function POST(req: Request) {
           'Help me prepare clinician questions from this report.',
           'Explain the concern level in simple language.',
         ],
-        actions: plannedActions,
         citations,
         source: 'policy_refusal',
         usage: { input_tokens: 0, output_tokens: 0 },
@@ -1150,7 +864,6 @@ export async function POST(req: Request) {
         response: refusalPayload.response,
         action_items: refusalPayload.actionItems,
         suggested_prompts: refusalPayload.suggestedPrompts,
-        actions: refusalPayload.actions,
         citations: refusalPayload.citations,
         usage: refusalPayload.usage,
         source: refusalPayload.source,
@@ -1163,7 +876,7 @@ export async function POST(req: Request) {
       });
     }
 
-    const confidenceFallbackReason = evaluateConfidenceFallbackReason(groundedContext, metrics);
+    const confidenceFallbackReason = evaluateConfidenceFallbackReason(context, metrics);
     traceStage({
       stage: 'policy_risk_checks',
       strategy: 'deterministic',
@@ -1173,7 +886,7 @@ export async function POST(req: Request) {
         : 'No policy or confidence fallback required for synthesis.',
     });
 
-    const contextSnippet = buildContextSnippet(metrics, riskCategory, groundedContext);
+    const contextSnippet = buildContextSnippet(metrics, riskCategory, context);
     const knowledgeSnippet = selectedCards
       .map((card) => `${card.id} (${card.title}): ${card.summary}`)
       .join('\n');
@@ -1192,10 +905,9 @@ export async function POST(req: Request) {
         mode,
         metrics,
         riskCategory,
-        groundedContext,
+        context,
         citations,
-        'heuristic',
-        plannedActions
+        'heuristic'
       );
     } else if (process.env.NODE_ENV === 'development' && process.env.MOCK_AI === 'true') {
       traceStage({
@@ -1209,10 +921,9 @@ export async function POST(req: Request) {
         mode,
         metrics,
         riskCategory,
-        groundedContext,
+        context,
         citations,
-        'mock',
-        plannedActions
+        'mock'
       );
     } else if (process.env.DASHSCOPE_API_KEY && process.env.DASHSCOPE_MODEL) {
       traceStage({
@@ -1256,7 +967,6 @@ export async function POST(req: Request) {
             'What should I monitor at home before follow-up?',
             'Generate clinician questions from these findings.',
           ],
-          actions: plannedActions,
           citations,
           source: 'llm',
           usage: result.usage,
@@ -1276,10 +986,9 @@ export async function POST(req: Request) {
             mode,
             metrics,
             riskCategory,
-            groundedContext,
+            context,
             citations,
-            'heuristic',
-            plannedActions
+            'heuristic'
           );
         } else {
           throw error;
@@ -1297,10 +1006,9 @@ export async function POST(req: Request) {
         mode,
         metrics,
         riskCategory,
-        groundedContext,
+        context,
         citations,
-        'heuristic',
-        plannedActions
+        'heuristic'
       );
     }
 
@@ -1316,10 +1024,9 @@ export async function POST(req: Request) {
         mode,
         metrics,
         riskCategory,
-        groundedContext,
+        context,
         citations,
-        'heuristic',
-        plannedActions
+        'heuristic'
       );
     }
 
@@ -1361,7 +1068,6 @@ export async function POST(req: Request) {
       response: safePayload.response,
       action_items: safePayload.actionItems,
       suggested_prompts: safePayload.suggestedPrompts,
-      actions: safePayload.actions,
       citations: safePayload.citations,
       usage: safePayload.usage,
       source: safePayload.source,

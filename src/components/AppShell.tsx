@@ -19,11 +19,6 @@ function isActivePath(currentPath: string, href: string): boolean {
   return currentPath === href || currentPath.startsWith(`${href}/`);
 }
 
-function shouldReserveAssistantRail(pathname: string): boolean {
-  if (pathname === '/') return false;
-  return true;
-}
-
 /**
  * Shared shell for clinical pages (everything outside landing route).
  */
@@ -31,7 +26,6 @@ export default function AppShell({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   const pathname = usePathname();
-  const reserveAssistantRail = shouldReserveAssistantRail(pathname);
 
   return (
     <div className="clinical-shell flex min-h-dvh flex-col">
@@ -97,11 +91,9 @@ export default function AppShell({
         </div>
       </header>
 
-      <main className={`flex-1 px-4 py-5 sm:px-6 ${reserveAssistantRail ? 'lg:pr-96' : ''}`}>
-        {children}
-      </main>
+      <main className="flex-1 px-4 py-5 sm:px-6">{children}</main>
 
-      <footer className={`border-t border-border/55 bg-card/75 px-4 py-4 ${reserveAssistantRail ? 'lg:pr-96' : ''}`}>
+      <footer className="border-t border-border/55 bg-card/75 px-4 py-4">
         <p className="mx-auto max-w-6xl text-center text-xs text-muted-foreground">
           Pedi-Growth supports concern documentation and follow-up conversations. It does not diagnose medical conditions and should be used with professional clinical review.
         </p>
