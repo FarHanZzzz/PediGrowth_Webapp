@@ -320,172 +320,64 @@ export default function ResultsPage() {
     setIsLoadingResult(true);
 
     fetchResultFromCloud(resultId)
-      .then((cloudData) => {
+      .then(async (cloudData) => {
         if (!active) return;
         if (cloudData) {
           setResult(normalizeResult(JSON.stringify(cloudData)));
           setIsLoadingResult(false);
-          // Transparently cache to IndexedDB for local offline use
-          import("@/lib/session/videoStore").then(({ saveResult }) => {
-            saveResult(resultId, cloudData).catch(() => {});
-          });
-        } else {
-          // Fallback to old storage
-          const raw = readResultRaw(resultId);
-          if (raw) {
-            setResult(normalizeResult(raw));
-            setIsLoadingResult(false);
-          } else {
-            getResult(resultId).then((stored) => {
-              if (!active) return;
-              if (stored) {
-                setResult(normalizeResult(JSON.stringify(stored)));
-                writeResult(resultId, stored);
-              } else {
-                setResult(null);
-              }
-              setIsLoadingResult(false);
-            }).catch(() => {
-              if (!active) return;
-              setResult(null);
-              setIsLoadingResult(false);
-            });
-          }
-        }
-      })
-      useEffect(() => {
-        if (!result) {
-          setVideoUrl(null);
+          try {
+            const { saveResult } = await import("@/lib/session/videoStore");
+            await saveResult(resultId, cloudData);
+          } catch {}
           return;
         }
 
-        const resolvedResult = result;
-        let objectUrl: string | null = null;
-        let active = true;
+        const raw = readResultRaw(resultId);
+        if (raw) {
+          setResult(normalizeResult(raw));
+          setIsLoadingResult(false);
+          return;
+        }
 
-        async function loadVideo() {
-          const persistedFallbackVideoUrl =
-            resolvedResult.videoUrl ??
-            (resolvedResult.run.sourceType === "manifest_hero"
-              ? formatDemoVideoPath(resolvedResult.run.sourceClipFilename)
-              : null);
-
-          if (resolvedResult.run.classification !== "real_analysis") {
-            if (active) {
-              setVideoUrl(
-                persistedFallbackVideoUrl ??
-                  formatDemoVideoPath(resolvedResult.run.sourceClipFilename)
-              );
+        getResult(resultId)
+          .then((stored) => {
+            if (!active) return;
+            if (stored) {
+              setResult(normalizeResult(JSON.stringify(stored)));
+              writeResult(resultId, stored);
+            } else {
+              setResult(null);
             }
-            return;
-          }
+            setIsLoadingResult(false);
+          })
+          .catch(() => {
+            if (!active) return;
+            setResult(null);
+            setIsLoadingResult(false);
+          });
+      })
+      .catch((err) => {
+        console.error("Cloud fetch failed:", err);
+        if (!active) return;
 
-          const sessionId =
-            resolvedResult.trace?.sessionId ??
-            useEffect(() => {
-              if (!result) {
-                setVideoUrl(null);
-                return;
-              }
-
-              const resolvedResult = result;
-              let objectUrl: string | null = null;
-              let active = true;
-
-              async function loadVideo() {
-                const persistedFallbackVideoUrl =
-                  resolvedResult.videoUrl ??
-                  (resolvedResult.run.sourceType === "manifest_hero"
-                    ? formatDemoVideoPath(resolvedResult.run.sourceClipFilename)
-                    : null);
-
-                if (resolvedResult.run.classification !== "real_analysis") {
-                  if (active) {
-                    setVideoUrl(
-                      persistedFallbackVideoUrl ??
-                        formatDemoVideoPath(resolvedResult.run.sourceClipFilename)
-                    );
-                  }
-                  return;
-                }
-
-                const sessionId =
-                  resolvedResult.trace?.sessionId ??
-                  useEffect(() => {
-                    if (!result) {
-                      setVideoUrl(null);
-                      return;
-                    }
-
-                    const resolvedResult = result;
-                    let objectUrl: string | null = null;
-                    let active = true;
-
-                    async function loadVideo() {
-                      const persistedFallbackVideoUrl =
-                        resolvedResult.videoUrl ??
-                        (resolvedResult.run.sourceType === "manifest_hero"
-                          ? formatDemoVideoPath(resolvedResult.run.sourceClipFilename)
-                          : null);
-
-                      if (resolvedResult.run.classification !== "real_analysis") {
-                        if (active) {
-                          setVideoUrl(
-                            persistedFallbackVideoUrl ??
-                              formatDemoVideoPath(resolvedResult.run.sourceClipFilename)
-                          );
-                        }
-                        return;
-                      }
-
-                      const sessionId =
-                        resolvedResult.trace?.sessionId ??
-                        (() => {
-                          const session = readSession<{ sessionId?: string }>();
-                          return session?.sessionId ?? null;
-                        })();
-
-                      if (!sessionId) {
-                        if (active) setVideoUrl(persistedFallbackVideoUrl);
-                        return;
-                      }
-
-                      try {
-                        const { getVideo } = await import("@/lib/session/videoStore");
-                        const videoData = await getVideo(sessionId);
-                        if (!videoData?.blob) {
-                          if (active) setVideoUrl(persistedFallbackVideoUrl);
-                          return;
-                        }
-
-                        objectUrl = URL.createObjectURL(videoData.blob);
-                        if (active) setVideoUrl(objectUrl);
-                      } catch {
-                        if (active) setVideoUrl(persistedFallbackVideoUrl);
-                      }
-                    }
-
-                    void loadVideo();
-
-                    return () => {
-                      active = false;
-                      if (objectUrl) URL.revokeObjectURL(objectUrl);
-                    };
-                  }, [result]);
-                active = false;
-                if (objectUrl) URL.revokeObjectURL(objectUrl);
-              };
-            }, [result]);
-          active = false;
-          if (objectUrl) URL.revokeObjectURL(objectUrl);
-        };
-      }, [result]);
+        const raw = readResultRaw(resultId);
+        if (raw) {
+          setResult(normalizeResult(raw));
+        } else {
+          setResult(null);
+        }
+        setIsLoadingResult(false);
+      });
 
     const session = readSession<{ clinicalAssessment?: SessionClinicalAssessment }>();
     if (session?.clinicalAssessment) {
       setSessionClinicalAssessment(session.clinicalAssessment);
     }
-  }, [result, resultId]);
+
+    return () => {
+      active = false;
+    };
+  }, [resultId]);
 
   useEffect(() => {
     if (!result) {
