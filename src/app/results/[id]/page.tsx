@@ -9,6 +9,7 @@ import {
   BarChart3,
   Camera,
   Download,
+  Loader2,
   MessageCircle,
   MessageSquare,
   PlayCircle,
@@ -301,12 +302,18 @@ export default function ResultsPage() {
   const [jumpToFrameIndex, setJumpToFrameIndex] = useState<number | null>(null);
   const [sessionClinicalAssessment, setSessionClinicalAssessment] =
     useState<SessionClinicalAssessment | null>(null);
+  const [isLoadingResult, setIsLoadingResult] = useState(true);
 
   useEffect(() => {
+    let active = true;
+    setIsLoadingResult(true);
+
     fetchResultFromCloud(resultId)
       .then((cloudData) => {
+        if (!active) return;
         if (cloudData) {
           setResult(normalizeResult(JSON.stringify(cloudData)));
+          setIsLoadingResult(false);
           // Transparently cache to IndexedDB for local offline use
           import("@/lib/session/videoStore").then(({ saveResult }) => {
             saveResult(resultId, cloudData).catch(() => {});
@@ -316,22 +323,41 @@ export default function ResultsPage() {
           const raw = readResultRaw(resultId);
           if (raw) {
             setResult(normalizeResult(raw));
+            setIsLoadingResult(false);
           } else {
             getResult(resultId).then((stored) => {
+              if (!active) return;
               if (stored) {
                 setResult(normalizeResult(JSON.stringify(stored)));
                 writeResult(resultId, stored);
+              } else {
+                setResult(null);
               }
-            }).catch(() => {});
+              setIsLoadingResult(false);
+            }).catch(() => {
+              if (!active) return;
+              setResult(null);
+              setIsLoadingResult(false);
+            });
           }
         }
       })
       .catch((e) => {
         console.error("Failed to fetch from cloud:", e);
+        if (!active) return;
         // Fallback on error
         const raw = readResultRaw(resultId);
-        if (raw) setResult(normalizeResult(raw));
+        if (raw) {
+          setResult(normalizeResult(raw));
+        } else {
+          setResult(null);
+        }
+        setIsLoadingResult(false);
       });
+
+    return () => {
+      active = false;
+    };
   }, [resultId]);
 
   useEffect(() => {
@@ -586,6 +612,17 @@ export default function ResultsPage() {
       toggle?.focus();
     }
   }, [isMobileAssistantOpen]);
+
+  if (isLoadingResult) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center px-4">
+        <div className="text-center space-y-4">
+          <Loader2 className="h-10 w-10 text-muted-foreground mx-auto animate-spin" />
+          <p className="text-sm text-muted-foreground">Loading result...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!result) {
     return (

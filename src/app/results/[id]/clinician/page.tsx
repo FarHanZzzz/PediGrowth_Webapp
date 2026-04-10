@@ -8,6 +8,7 @@ import {
   Copy,
   Download,
   FileText,
+  Loader2,
   Printer,
   RefreshCw,
   Stethoscope,
@@ -141,6 +142,7 @@ export default function ClinicianResultPage() {
 
   const {
     result,
+    isLoading,
     videoUrl,
     exportAvailable,
     keyFrames,
@@ -217,6 +219,17 @@ export default function ClinicianResultPage() {
     const timer = window.setTimeout(() => setShareLinkStatus(null), 4000);
     return () => window.clearTimeout(timer);
   }, [shareLinkStatus]);
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center px-4">
+        <div className="space-y-4 text-center">
+          <Loader2 className="mx-auto h-10 w-10 animate-spin text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">Loading result...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!result) {
     return (

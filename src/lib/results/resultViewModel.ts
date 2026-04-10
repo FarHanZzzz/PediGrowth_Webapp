@@ -29,6 +29,7 @@ export function formatDomainLabel(domain: string): string {
 
 export interface ResultViewModel {
   result: AnalysisSessionResult | null;
+  isLoading: boolean;
   videoUrl: string | null;
   exportAvailable: boolean;
   keyFrames: ReturnType<typeof buildKeyFrames> | null;
@@ -43,17 +44,20 @@ export interface ResultViewModel {
 
 export function useResultViewModel(resultId: string): ResultViewModel {
   const [result, setResult] = useState<AnalysisSessionResult | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [exportAvailable, setExportAvailable] = useState(false);
 
   useEffect(() => {
     let active = true;
+    setIsLoading(true);
 
     fetchResultFromCloud(resultId)
       .then(async (cloudData) => {
         if (!active) return;
         if (cloudData) {
           setResult(normalizeResult(JSON.stringify(cloudData)));
+          setIsLoading(false);
           
           // Transparent cache to local indexedDB
           try {
@@ -67,6 +71,7 @@ export function useResultViewModel(resultId: string): ResultViewModel {
         const raw = readResultRaw(resultId);
         if (raw) {
           setResult(normalizeResult(raw));
+          setIsLoading(false);
           return;
         }
 
@@ -75,13 +80,18 @@ export function useResultViewModel(resultId: string): ResultViewModel {
             if (!active) return;
             if (!stored) {
               setResult(null);
+              setIsLoading(false);
               return;
             }
             writeResult(resultId, stored);
             setResult(normalizeResult(JSON.stringify(stored)));
+            setIsLoading(false);
           })
           .catch(() => {
-            if (active) setResult(null);
+            if (active) {
+              setResult(null);
+              setIsLoading(false);
+            }
           });
       })
       .catch((err) => {
@@ -94,6 +104,7 @@ export function useResultViewModel(resultId: string): ResultViewModel {
         } else {
           setResult(null);
         }
+        setIsLoading(false);
       });
 
     return () => {
@@ -207,6 +218,7 @@ export function useResultViewModel(resultId: string): ResultViewModel {
 
   return {
     result,
+    isLoading,
     videoUrl,
     exportAvailable,
     keyFrames,
