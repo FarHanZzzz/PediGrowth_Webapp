@@ -11,7 +11,7 @@
 
 Pedi-Growth is a mobile-first pediatric gait concern analysis, monitoring, and care-navigation platform. It turns ordinary smartphone videos into structured, explainable gait concern summaries and clinician-ready packets — reducing subjectivity, improving follow-up consistency, and helping families escalate care appropriately.
 
-**Competition message lock:** GAITBRIDGE helps caregivers capture a usable walking video, explains what was observed in simple language, and creates a clinician-ready handoff packet for follow-up review.
+**Competition message lock:** Pedi-Growth helps caregivers capture a usable walking video, explains what was observed in simple language, and creates a clinician-ready handoff packet for follow-up review.
 
 **Core value proposition:** Low-cost, zero-new-hardware, mobile-first, explainable, quality-gated, privacy-aware, longitudinal — useful to both caregivers and clinicians.
 

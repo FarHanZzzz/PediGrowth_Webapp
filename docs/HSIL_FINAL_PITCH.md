@@ -1,322 +1,200 @@
-# 🏆 Pedi-Growth — HSIL Hackathon 2026 Final Pitch
+# Pedi-Growth - HSIL Hackathon 2026 Final Pitch
 
-**Theme:** Building High-Value Health Systems: Leveraging AI  
-**Format:** 3-Minute Pitch + Demo  
-**Tone:** Human-first, problem-led, sustainability-focused
-
----
-
-## 📖 The Full Pitch Script
-
-> **Delivery note:** Speak like you're telling a story to a friend. Not performing. Not selling. Explaining something that matters.
+Theme: Building High-Value Health Systems: Leveraging AI  
+Format: 3-minute pitch + demo  
+Required timing: 10s intro, 20s problem, 60s product, 60s demo, 30s wrap-up
 
 ---
 
-### Part 1: The Problem (0:00 – 1:00) ⭐ PRIORITIZE THIS
+## What Was Updated Before Final Lock
 
-**[Start with a real moment. Not dramatic. Just true.]**
+This final version is aligned to the project as implemented and to the official timing card.
 
-> "Let me tell you what actually happens in Bangladesh when a parent notices their child isn't walking right.
->
-> They watch their toddler limp across the room. They worry. They Google. They wait — often **three to six months** — for a pediatric appointment. And when they finally get those 15 minutes with a doctor?
->
-> The doctor asks: *'What did you notice?'*
->
-> And the parent — scared, exhausted, trying to remember — says something like: *'Their leg seems... different? Maybe? I'm not sure.'*
->
-> The doctor watches the child walk for 30 seconds in a clinic hallway. Says: *'Let's wait and see. Come back in six months.'*
->
-> **Six months becomes a year. A year becomes two.**
->
-> And by the time a child with cerebral palsy gets diagnosed in Bangladesh, they're already **5 years old**. The brain plasticity window that could've changed everything? **It closed at 3.**
->
-> This isn't a lack of doctors. This isn't a lack of will.
->
-> **This is a communication gap.** Parents can't articulate what they see. Doctors don't have structured data. And children lose time they can't get back.
->
-> Right now, there are **170,000 children with cerebral palsy in Bangladesh**. Most undiagnosed. Most past the intervention window.
->
-> And the tool that could help — a formal gait analysis lab — **costs $50,000 to $100,000**. There are essentially **zero** accessible to the public here.
->
-> So families are left with worry, waiting, and nothing in between."
+Key fixes from the previous draft:
+- Timing is now exactly mapped to 10s / 20s / 60s / 60s / 30s.
+- "5-second video" changed to "5-10 second clip" to match capture guidance.
+- "video never leaves device" changed to precise privacy wording:
+  - video is processed locally for analysis
+  - only derived data is sent for optional backend inference
+  - sharing is explicit and user-controlled
+- Technical claim wording is now exact:
+  - 33 pose landmarks
+  - 34 backend ML features
+  - 7 clinician-facing gait metrics
+  - 5 backend risk targets
+- Typo fixed: "instead of从零" -> "instead of starting from zero".
 
 ---
 
-### Part 2: The Solution (1:00 – 1:50) ⭐ PRIORITIZE THIS
+## Final 3-Minute Script (Stage-Ready)
 
-**[Shift tone. Not excited. Calm. Clear. This exists.]**
+## 0:00-0:10 (10s) - Introduction
 
-> "This is what we built.
->
-> **Pedi-Growth turns any smartphone into a structured screening and clinician handoff system.**
->
-> Here's how it works in real life:
->
-> A parent opens their phone browser — no app download — and records a **5-second video** of their child walking. That's it.
->
-> The video never leaves their device. Our system processes it right there in the browser, extracts 33 body landmarks, and computes **34 biomechanical metrics**: stride regularity, asymmetry, trunk sway, joint angles.
->
-> Then we produce two things:
->
-> **One:** A calm, plain-language summary for the parent. Not a diagnosis. Not medical jargon. Just: *'Here's what we observed. Here's what it might mean. Here's what to do next.'*
->
-> **Two:** A structured clinician packet — a PDF the parent can bring to their doctor. It has everything the doctor needs in one page: quality scores, concern flags, longitudinal tracking if there's history, and clear limitations so the doctor knows exactly what this is and isn't.
->
-> **We don't diagnose. We don't replace the doctor.**
->
-> We turn 'something seems off' into 'here's exactly what we saw, how confident we are, and what to do next.'
->
-> The parent walks into the appointment with data. The doctor starts with context instead of从零. And the child gets seen — really seen — years earlier than they would have otherwise."
+"Good afternoon. We are Pedi-Growth.
 
----
+We help turn one parent-recorded walking clip into a structured clinical handoff, so children with movement concerns can be identified and referred earlier."
 
-### Part 3: How It Works (Brief — 1:50 – 2:10)
+## 0:10-0:30 (20s) - Problem
 
-**[Just enough to show it's real. Don't linger here.]**
+"In Bangladesh, many children with cerebral palsy are diagnosed around age five, after the highest-impact early intervention window.
 
-> "Technically, we're doing three things most systems don't:
->
-> 1. **Client-side processing** — the video stays on the device. Privacy-first by design, not as an afterthought.
-> 2. **Quality gating** — if the video is bad, we say so. We don't force unreliable results. We tell the parent to retake it.
-> 3. **Policy-guarded AI** — our system literally refuses to use diagnostic language. It won't say 'your child has CP.' It says 'we observed X, follow-up with Y.'
->
-> This is built for the real world. Low-end Android. Spotty internet. Parents who are scared. Doctors who are busy."
+The bottleneck is not only specialist shortage. It is the handoff gap.
+Parents struggle to describe what they saw, and clinicians start from limited, subjective context during a short visit."
 
----
+## 0:30-1:30 (60s) - Product
 
-### Part 4: Sustainability & Business Model (2:10 – 2:40) ⭐ HIGHLIGHT THIS
+"Pedi-Growth is a phone-browser workflow, no app install.
 
-**[This is where you show you're not just a hackathon project. You're building something that lasts.]**
+A caregiver records or uploads a short 5-10 second walking clip.
 
-> "Now — the question we get most: **How does this survive past the hackathon?**
->
-> Here's the honest truth: **families shouldn't pay for this.** If you charge a worried parent to screen their child, you've already failed.
->
-> So we don't sell to families. **We sell to the health system that serves them.**
->
-> Our model is **B2B2C** — clinics, NGOs, and telemedicine platforms like CMED Health and Shasti license Pedi-Growth for their community health worker programs.
->
-> **One license — $49 to $99 a month — covers unlimited screenings for their entire patient population.**
->
-> Why would a clinic pay for this?
->
-> Because every screening creates structured data that **saves that doctor 15 to 20 minutes** of context-gathering at the appointment. It turns 'tell me what you noticed' into 'here's the data, let's act on it.'
->
-> Why would an NGO pay for this?
->
-> Because it gives them **population-level screening analytics** — they can see how many children they've reached, where concerns cluster, and report against SDG 3 and SDG 10 targets with real numbers.
->
-> **The sustainability math is simple:**
->
-> - 50 clinic partnerships at $79/month average = **$3,950 monthly recurring revenue**
-> - Near-zero marginal cost per additional screening
-> - Infrastructure runs on existing cloud providers — Supabase, AWS, or DigitalOcean
-> - No hardware, no supply chain, no distribution problem
->
-> **This isn't a grant-dependent project. It's a revenue-generating health system tool** that pays for itself in saved clinician time and reaches more children with every license sold.
->
-> And because it's phone-only, it scales to India, to Africa, to Southeast Asia without rebuilding anything."
+From that clip, our system extracts 33 pose landmarks and runs a dual analysis path:
+- local gait analysis for immediate structured outputs
+- optional backend inference on derived landmark data, not raw video
 
----
+We produce two outputs in the same session:
 
-### Part 5: The Close (2:40 – 3:00)
+First, a calm caregiver summary in plain language:
+what was observed, confidence context, and what to do next.
 
-**[End on the human note. Not the tech. Not the money. The child.]**
+Second, a clinician packet:
+quality status, evidence-backed gait metrics, concern domains, and explicit limitations.
 
-> "The 2025 HSIL Global Hackathon winner proved something important: **workflow integration beats flashy AI every time.**
->
-> We're not trying to replace specialists. We're not building a magic diagnostic button.
->
-> We're building the bridge between a parent watching their child walk across the living room and a doctor who finally has the data to help.
->
-> **One video. One calm summary. One structured handoff. One clear next step.**
->
-> Every child in Bangladesh deserves to be understood by the health system before their window closes.
->
-> We're building the tool that makes that possible.
->
-> Thank you."
+The system is quality-gated by design.
+If capture quality is poor, we downgrade confidence or recommend retake instead of forcing a confident-looking result.
+
+Most importantly, this is not diagnostic AI.
+Policy safeguards enforce non-diagnostic language across caregiver, clinician, and assistant outputs."
+
+## 1:30-2:30 (60s) - Demo Talk Track
+
+"In this demo, I will show four steps.
+
+Step one: capture.
+I open the browser, record or upload a clip, and run preflight quality checks.
+
+Step two: analysis.
+You can see staged progress from landmark extraction to concern scoring.
+
+Step three: results.
+Here is the caregiver summary with confidence notes and limitations.
+Here is the clinician packet with structured metrics and follow-up framing.
+
+Step four: handoff.
+I generate a secure share link and PDF fallback so this can move across devices and clinical contexts.
+
+Notice the trust controls:
+run provenance labeling, visible quality context, and explicit non-diagnostic framing.
+That is what makes this usable in real care workflows, not just as a model demo."
+
+## 2:30-3:00 (30s) - Wrap-up
+
+"Pedi-Growth is built for one outcome:
+help families arrive with clearer evidence, so clinicians can act earlier.
+
+This is a practical health-system bridge, not a black-box diagnosis claim.
+
+One short clip.
+One calm explanation.
+One structured handoff.
+One clearer next step for the child.
+
+Thank you."
 
 ---
 
-## 🎯 Key Messaging Hierarchy
+## Slide and Time Mapping (Aligned To Your 14-Slide PDF)
 
-| Priority | Message | Why |
-|---|---|---|
-| **1** | The problem: 5-year diagnosis delay, 170K children, zero accessible gait labs | Judges need to feel the gap first |
-| **2** | The solution: Structured screening + clinician handoff, not diagnosis | Shows you understand the real need |
-| **3** | Sustainability: B2B2C model — health systems pay, families don't | Proves this isn't a throwaway project |
-| **4** | Technical credibility: Client-side, quality-gated, policy-guarded | Shows it's built right |
-| **5** | Scale potential: Phone-only, works anywhere, near-zero marginal cost | Proves long-term vision |
+Official HSIL timing format:
+- 10s Introduction
+- 20s Problem
+- 60s Product
+- 60s Demo
+- 30s Wrap-up
 
----
+Your deck-aligned mapping:
+- 0:00-0:10 (Introduction): Slides 1-2
+  - Slide 1: Hello / team opening
+  - Slide 2: Vision statement
+- 0:10-0:30 (Problem): Slide 3
+  - The Problem: The 5-Year Delay
+- 0:30-1:30 (Product): Slides 4-7
+  - Slide 4: Solution overview
+  - Slide 5: Key features
+  - Slide 6: Dual output workflow
+  - Slide 7: Clinical trust and safety guardrails
+- 1:30-2:30 (Demo): Live product walkthrough (primary), Slide 6 kept visible as anchor
+  - Capture -> preflight -> analysis -> caregiver summary -> clinician packet -> handoff
+  - If live demo fails, use Slides 5-7 as fallback feature walkthrough
+- 2:30-3:00 (Wrap-up): Slides 12-14
+  - Slide 12: Economic impact
+  - Slide 13: Business model
+  - Slide 14: Road ahead + close
 
-## 💡 Sustainability Deep-Dive (For Judge Q&A)
-
-### Why This Model is Sustainable
-
-| Dimension | How We Sustain |
-|---|---|
-| **Revenue** | B2B2C SaaS: recurring monthly revenue from clinics/NGOs, not one-off grants |
-| **Cost structure** | Cloud-native, no hardware, near-zero marginal cost per screening |
-| **Distribution** | Through existing health system partnerships — no direct-to-consumer CAC |
-| **Retention** | Once a clinic integrates Pedi-Growth into their workflow, switching cost is high |
-| **Scalability** | Same infrastructure serves Bangladesh, India, Africa, SEA — no rebuild needed |
-| **Impact measurement** | Every screening is trackable — NGOs and health systems get SDG reporting data |
-| **Moat** | Not the ML — it's clinical trust + workflow integration + longitudinal data network effects |
-
-### Revenue Pathways
-
-```
-PATHWAY 1: Clinic Licensing (Primary)
-├─ $49–99/month per clinic
-├─ Unlimited screenings for their patient population
-├─ Longitudinal tracking dashboard
-├─ Multi-provider care coordination
-└─ 50 clinics × $79 avg = $3,950 MRR
-
-PATHWAY 2: NGO/Health System Partnerships (Secondary)
-├─ $500–2,000/month depending on scale
-├─ Community health worker deployment
-├─ Population health analytics
-├─ SDG reporting dashboards
-└─ 5 NGOs × $1,000 avg = $5,000 MRR
-
-PATHWAY 3: Telemedicine Platform Integration (Strategic)
-├─ API licensing + white-label options
-├─ Embedded into existing platforms (CMED, Shasti)
-├─ Revenue share on completed referrals
-└─ 2 platforms × $1,500 = $3,000 MRR
-
-TOTAL ADDRESSABLE (18 months): ~$12K MRR
-```
-
-### Cost Structure
-
-```
-MONTHLY OPERATING COSTS (at scale)
-├─ Cloud infrastructure (Supabase + AWS/DigitalOcean): ~$200–400
-├─ LLM API costs (if AI navigator enabled): ~$100–300
-├─ Domain + SSL + monitoring: ~$50
-├─ Total: ~$350–750/month
-
-BREAK-EVEN: ~5 clinic licenses
-PROFITABILITY: ~8–10 clinic licenses
-```
-
-### Why Judges Should Believe in Sustainability
-
-✅ **No grant dependency** — generates its own revenue  
-✅ **No hardware or supply chain** — pure software, instant deployment  
-✅ **Distribution through existing channels** — clinics, NGOs, telemedicine platforms already have the relationships  
-✅ **Self-reinforcing** — more clinics → more data → better models → more clinics want in  
-✅ **Aligned incentives** — we only succeed if health systems save time and reach more children  
+Note for finals:
+- Slides 8-11 are useful backup/context slides, but should be skipped in the main 3-minute run unless a judge asks.
+- Reserve business-model depth for Q&A; do not spend more than ~10 seconds on Slide 13 during main delivery.
 
 ---
 
-## 🎤 Judge Q&A: Sustainability-Focused Responses
+## Judge-Proof Technical Facts (Safe to Say Verbatim)
 
-### "How is this sustainable long-term?"
-
-> "Three reasons:
->
-> **One**, we generate recurring revenue from health systems, not one-time grants. A $49/month clinic license pays for itself in saved appointment time.
->
-> **Two**, our cost structure is lean — cloud-native, no hardware, near-zero marginal cost per screening. We break even at 5 clinics.
->
-> **Three**, distribution is through existing partnerships. We don't need to acquire families one by one. One clinic partnership brings hundreds of families."
-
-### "What if clinics won't pay?"
-
-> "Honest answer: some won't. But the ones serving high volumes of pediatric patients will, because each structured screening saves them 15–20 minutes. At $49/month, that's less than the cost of one wasted appointment slot.
->
-> And for clinics that truly can't pay? We partner with NGOs who sponsor licenses as part of their screening programs. The family never sees a bill."
-
-### "How do you compete with free alternatives?"
-
-> "There are no free alternatives that do what we do. OpenCap is a research tool, not a care-navigation system. Gait labs cost $50K+. General movement assessment tools require trained clinicians.
->
-> We're the only system that goes from phone video → structured clinician packet with policy-safe AI, works on any browser, and fits into existing referral workflows. The moat isn't free access — it's clinical trust and workflow integration."
-
-### "What's your go-to-market strategy?"
-
-> "Phase one: partner with 5–10 pilot clinics in Bangladesh — the ones already doing pediatric neurology work. They get free access, we get feedback.
->
-> Phase two: use those pilot results to approach CMED Health, Shasti, and major NGOs. Show them working case studies, not slide decks.
->
-> Phase three: scale across South Asia and Africa through health system partnerships, not direct-to-consumer marketing.
->
-> We're not building a consumer app. We're building health system infrastructure."
+- "We extract 33 pose landmarks from the video."
+- "Our backend model path uses 34 engineered features and predicts 5 gait risk targets."
+- "The caregiver and clinician views are non-diagnostic by policy."
+- "Quality gating prevents overconfident interpretation from poor video."
+- "Care teams can use secure share links or PDF handoff outputs."
 
 ---
 
-## ✅ Pre-Pitch Checklist
+## Sustainability (30-second backup if asked)
 
-- [ ] Memorize the problem statement with real numbers (5 years, 170K, $50K+, age 3 window)
-- [ ] Practice solution section until it sounds like explaining to a friend, not reading a script
-- [ ] Prepare live demo: record video → get summary → show clinician packet (end-to-end)
-- [ ] Have backup screenshots/video ready in case live demo fails
-- [ ] Print one-page business model + sustainability summary for judges
-- [ ] Test demo on low-end Android device (real-world conditions)
-- [ ] Rehearse sustainability Q&A until answers are automatic
-- [ ] Prepare 30-second version in case judges say "give me the short version"
+"Families should not pay for first-line screening support.
 
----
+Our model is B2B2C: clinics, NGOs, and telehealth partners license the workflow, while caregivers access it through those channels.
 
-## 📌 One-Page Summary (Print This for Judges)
+That aligns incentives: providers save context-gathering time, organizations gain structured screening coverage data, and families get earlier, clearer follow-up pathways."
 
-```
-PEDI-GROWTH — AT A GLANCE
+## Business Model Verdict (From Current PDF)
 
-THE PROBLEM
-• 170,000 children with CP in Bangladesh, most undiagnosed
-• Mean diagnosis age: 5 years 2 months (intervention window closes at 3)
-• Gait labs cost $50K–$100K, essentially zero public access
-• Parents can't articulate concerns. Doctors start from zero.
+Current model direction is strong, but not perfect yet for judge scrutiny.
 
-THE SOLUTION
-• Phone browser → 5-second walking video → structured clinician packet
-• 34 biomechanical metrics, quality-gated, policy-safe AI
-• Parent summary (plain language) + clinician packet (structured data)
-• No diagnosis. No panic. Just data that makes the next visit 10x more effective.
+What is strong:
+- B2B2C positioning is correct for this problem.
+- "Families do not pay" is ethically and strategically strong.
+- Multi-channel revenue logic (clinics, telehealth, NGO/public health) is credible.
 
-THE SUSTAINABILITY
-• B2B2C SaaS: clinics/NGOs pay $49–99/month, families never pay
-• Break-even at ~5 clinic licenses
-• Near-zero marginal cost per screening
-• Revenue pathway: 50 clinics × $79 = $3,950 MRR
-• Cloud-native, no hardware, scales globally without rebuild
+What to tighten before final delivery:
+- Use one pricing story everywhere (avoid mixed seat-based vs volume-based phrasing across materials).
+- Label partner names as "target channels" unless active agreements exist.
+- Add one unit-economics line judges can remember: break-even point and why.
+- Keep one primary revenue engine in the 3-minute pitch (clinic licensing), move others to Q&A.
 
-THE ASK
-• We're looking for pilot clinic partners who want to reduce
-  context-gathering time and reach more children earlier.
-• We're not looking for grants. We're looking for health systems
-  who want a screening force multiplier.
-```
+Judge-safe one-liner:
+- "Primary revenue is clinic licensing on a recurring monthly fee; NGO and platform partnerships are expansion channels after pilot validation." 
 
 ---
 
-## 🚀 Why This Pitch Wins
+## High-Pressure Q and A (Fast Replies)
 
-| What HSIL Judges Want | How This Pitch Delivers |
-|---|---|
-| **Problem understanding** | Opens with real human story + hard numbers (5yr delay, 170K children) |
-| **Solution clarity** | Explains what it does in one sentence, shows two outputs clearly |
-| **Sustainability** | Dedicated section with revenue math, cost structure, break-even point |
-| **Health system fit** | Positions as infrastructure, not consumer app — aligns with 2026 theme |
-| **Honest positioning** | Explicitly non-diagnostic, acknowledges validation stage |
-| **Scalable impact** | Phone-only, works anywhere, B2B2C distribution through existing channels |
-| **Responsible AI** | Policy-guarded language, quality gating, uncertainty exposure |
+Q: "Are you diagnosing CP?"  
+A: "No. We provide structured screening support and clinician handoff, not diagnosis."
 
-**Winning formula:**
-> Real problem first → Clear solution → Honest sustainability → Human close
+Q: "What if the video is poor?"  
+A: "We quality-gate, downgrade confidence, or ask for retake. We do not force unreliable output."
+
+Q: "What is the moat?"  
+A: "Trustworthy workflow integration: quality gating, policy-safe language, and clinician-ready handoff."
+
+Q: "Why will health systems adopt this?"  
+A: "It reduces context loss between home observation and clinic decision-making using existing phone behavior."
 
 ---
 
-## 💬 Final Note
+## Final Delivery Notes
 
-This pitch is designed to sound like **a person who understands the problem deeply and has built something that lasts**, not a team that spent 48 hours on a flashy demo.
+- Speak slower than normal conversation pace.
+- Keep eye contact during the problem and close.
+- During demo, narrate only what judges should notice.
+- If live demo fails, switch instantly to backup visuals and keep the same narration order.
+- Never deviate into diagnostic language.
 
-Lead with the child who waits 5 years. Close with the child who gets seen at 2.
-
-Everything in between is just the bridge you're building.

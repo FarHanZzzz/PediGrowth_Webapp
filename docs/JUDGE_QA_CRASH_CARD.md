@@ -5,7 +5,7 @@ Use these exact responses under pressure. Keep answers short, honest, and consis
 ## Core Positioning
 
 One-liner:
-GAITBRIDGE helps caregivers capture a usable walking video, explains what was observed in simple language, and creates a clinician-ready handoff packet for follow-up review.
+Pedi-Growth helps caregivers capture a usable walking video, explains what was observed in simple language, and creates a clinician-ready handoff packet for follow-up review.
 
 Boundary line:
 This is a support workflow for documentation and follow-up preparation, not a diagnostic system.

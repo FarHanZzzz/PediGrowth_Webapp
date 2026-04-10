@@ -2,7 +2,7 @@
 
 **Version:** 0.1.0-draft | **Date:** 2026-04-06
 
-**Competition message lock:** GAITBRIDGE helps caregivers capture a usable walking video, explains what was observed in simple language, and creates a clinician-ready handoff packet for follow-up review.
+**Competition message lock:** Pedi-Growth helps caregivers capture a usable walking video, explains what was observed in simple language, and creates a clinician-ready handoff packet for follow-up review.
 
 ---
 
