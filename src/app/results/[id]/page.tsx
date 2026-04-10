@@ -9,7 +9,6 @@ import {
   BarChart3,
   Camera,
   Download,
-  Loader2,
   MessageCircle,
   MessageSquare,
   PlayCircle,
@@ -354,34 +353,133 @@ export default function ResultsPage() {
           }
         }
       })
-      .catch((e) => {
-        console.error("Failed to fetch from cloud:", e);
-        if (!active) return;
-        // Fallback on error
-        const raw = readResultRaw(resultId);
-        if (raw) {
-          setResult(normalizeResult(raw));
-        } else {
-          setResult(null);
+      useEffect(() => {
+        if (!result) {
+          setVideoUrl(null);
+          return;
         }
-        setIsLoadingResult(false);
-      });
 
-    return () => {
-      active = false;
-    };
-  }, [resultId]);
+        const resolvedResult = result;
+        let objectUrl: string | null = null;
+        let active = true;
 
-  useEffect(() => {
-    if (result) {
-      const embedded = result as unknown as ResultWithClinicalAssessment;
-      const linkedClinicalAssessment =
-        embedded.clinicalAssessment ?? embedded.session?.clinicalAssessment ?? null;
-      if (linkedClinicalAssessment) {
-        setSessionClinicalAssessment(linkedClinicalAssessment);
-        return;
-      }
-    }
+        async function loadVideo() {
+          const persistedFallbackVideoUrl =
+            resolvedResult.videoUrl ??
+            (resolvedResult.run.sourceType === "manifest_hero"
+              ? formatDemoVideoPath(resolvedResult.run.sourceClipFilename)
+              : null);
+
+          if (resolvedResult.run.classification !== "real_analysis") {
+            if (active) {
+              setVideoUrl(
+                persistedFallbackVideoUrl ??
+                  formatDemoVideoPath(resolvedResult.run.sourceClipFilename)
+              );
+            }
+            return;
+          }
+
+          const sessionId =
+            resolvedResult.trace?.sessionId ??
+            useEffect(() => {
+              if (!result) {
+                setVideoUrl(null);
+                return;
+              }
+
+              const resolvedResult = result;
+              let objectUrl: string | null = null;
+              let active = true;
+
+              async function loadVideo() {
+                const persistedFallbackVideoUrl =
+                  resolvedResult.videoUrl ??
+                  (resolvedResult.run.sourceType === "manifest_hero"
+                    ? formatDemoVideoPath(resolvedResult.run.sourceClipFilename)
+                    : null);
+
+                if (resolvedResult.run.classification !== "real_analysis") {
+                  if (active) {
+                    setVideoUrl(
+                      persistedFallbackVideoUrl ??
+                        formatDemoVideoPath(resolvedResult.run.sourceClipFilename)
+                    );
+                  }
+                  return;
+                }
+
+                const sessionId =
+                  resolvedResult.trace?.sessionId ??
+                  useEffect(() => {
+                    if (!result) {
+                      setVideoUrl(null);
+                      return;
+                    }
+
+                    const resolvedResult = result;
+                    let objectUrl: string | null = null;
+                    let active = true;
+
+                    async function loadVideo() {
+                      const persistedFallbackVideoUrl =
+                        resolvedResult.videoUrl ??
+                        (resolvedResult.run.sourceType === "manifest_hero"
+                          ? formatDemoVideoPath(resolvedResult.run.sourceClipFilename)
+                          : null);
+
+                      if (resolvedResult.run.classification !== "real_analysis") {
+                        if (active) {
+                          setVideoUrl(
+                            persistedFallbackVideoUrl ??
+                              formatDemoVideoPath(resolvedResult.run.sourceClipFilename)
+                          );
+                        }
+                        return;
+                      }
+
+                      const sessionId =
+                        resolvedResult.trace?.sessionId ??
+                        (() => {
+                          const session = readSession<{ sessionId?: string }>();
+                          return session?.sessionId ?? null;
+                        })();
+
+                      if (!sessionId) {
+                        if (active) setVideoUrl(persistedFallbackVideoUrl);
+                        return;
+                      }
+
+                      try {
+                        const { getVideo } = await import("@/lib/session/videoStore");
+                        const videoData = await getVideo(sessionId);
+                        if (!videoData?.blob) {
+                          if (active) setVideoUrl(persistedFallbackVideoUrl);
+                          return;
+                        }
+
+                        objectUrl = URL.createObjectURL(videoData.blob);
+                        if (active) setVideoUrl(objectUrl);
+                      } catch {
+                        if (active) setVideoUrl(persistedFallbackVideoUrl);
+                      }
+                    }
+
+                    void loadVideo();
+
+                    return () => {
+                      active = false;
+                      if (objectUrl) URL.revokeObjectURL(objectUrl);
+                    };
+                  }, [result]);
+                active = false;
+                if (objectUrl) URL.revokeObjectURL(objectUrl);
+              };
+            }, [result]);
+          active = false;
+          if (objectUrl) URL.revokeObjectURL(objectUrl);
+        };
+      }, [result]);
 
     const session = readSession<{ clinicalAssessment?: SessionClinicalAssessment }>();
     if (session?.clinicalAssessment) {
@@ -657,17 +755,6 @@ export default function ResultsPage() {
       toggle?.focus();
     }
   }, [isMobileAssistantOpen]);
-
-  if (isLoadingResult) {
-    return (
-      <div className="flex min-h-dvh items-center justify-center px-4">
-        <div className="text-center space-y-4">
-          <Loader2 className="h-10 w-10 text-muted-foreground mx-auto animate-spin" />
-          <p className="text-sm text-muted-foreground">Loading result...</p>
-        </div>
-      </div>
-    );
-  }
 
   if (!result) {
     return (
