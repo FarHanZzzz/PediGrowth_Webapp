@@ -14,6 +14,7 @@ import {
   PlayCircle,
   Stethoscope,
   Video,
+  Activity,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -60,10 +61,10 @@ const CONCERN_DOMAINS = [
 ];
 
 const DOMAIN_DAILY_IMPACT: Record<string, string> = {
-  asymmetry: "One side may seem to work harder than the other, especially during longer walks.",
-  irregularRhythm: "Step timing may vary, which can make walking look less smooth or more effortful.",
-  lateralInstability: "Side-to-side balance may be less steady, especially when turning or walking faster.",
-  pathDeviation: "Your child may drift off a straight path and need more visual or caregiver guidance.",
+  asymmetry: "We noticed differences between the left and right sides. This means one side of the body might be working harder or moving differently than the other, which can become more noticeable or tiring during longer walks.",
+  irregularRhythm: "Your child's step timing shows some variation. Instead of a steady, predictable rhythm, their steps might occasionally speed up or slow down, making walking look less smooth and requiring more effort on their part.",
+  lateralInstability: "There seems to be some side-to-side wobbling. This means their balance is a bit less steady, making it harder for them to maintain a strong center of gravity, especially when turning around corners or trying to walk quickly.",
+  pathDeviation: "We saw that your child tends to drift away from walking in a straight line. They might need a bit more visual focus or a guiding hand to stay on a clear path, rather than walking straight ahead.",
 };
 
 const DOMAIN_MONITORING_FOCUS: Record<string, string> = {
@@ -634,7 +635,9 @@ export default function ResultsPage() {
     return metadata;
   }, [resultId, sessionClinicalAssessment]);
 
+
   const handleFocusIssue = (frameIndex: number) => {
+    if (!result?.trace || !videoUrl) return;
     setActiveTab("video");
     setJumpToFrameIndex(null);
     requestAnimationFrame(() => {
@@ -672,6 +675,7 @@ export default function ResultsPage() {
     run.classification === "real_analysis" && result.assessmentMode === "cannot_assess";
   const hasTrace = Boolean(result.trace);
   const hasVideo = Boolean(videoUrl);
+  const canJumpToVideo = hasTrace && hasVideo;
   const nickname = result.session.nickname;
   const followupPriority = toFollowupPriority(result.concerns.followupPriority);
   const followupLabel = FOLLOWUP_LABELS[followupPriority];
@@ -837,35 +841,53 @@ export default function ResultsPage() {
           </p>
         </div>
 
-        <Card className="relative overflow-hidden border-0 bg-white/60 backdrop-blur-2xl shadow-xl shadow-black/5 ring-1 ring-white/80 transition-all hover:shadow-2xl hover:bg-white/80">
-          <div className="absolute inset-0 bg-linear-to-br from-white/40 to-transparent pointer-events-none" />
-          <CardContent className="relative grid gap-6 p-6 sm:grid-cols-3">
-            <div className="group">
-              <p className="text-[11px] font-extrabold uppercase tracking-widest text-[#5c7a76] mb-2">Overall observation</p>
-              <p className="text-lg font-bold leading-tight text-slate-800 transition-colors group-hover:text-primary">
+        <Card className="relative overflow-hidden border border-indigo-100/50 bg-white/70 backdrop-blur-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all duration-500 hover:shadow-[0_12px_40px_rgb(0,0,0,0.08)] hover:bg-white/90 group/card">
+          <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/50 via-white/20 to-teal-50/30 opacity-70 pointer-events-none" />
+          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-teal-400 via-indigo-400 to-blue-500 opacity-80" />
+          <CardContent className="relative grid gap-8 p-8 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-slate-200/60">
+            <div className="group transition-transform duration-300 hover:-translate-y-1 sm:pr-6">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="rounded-full bg-teal-100/80 p-1.5 text-teal-700 ring-1 ring-teal-200/50">
+                  <Activity className="h-3.5 w-3.5" />
+                </div>
+                <p className="text-[11px] font-bold uppercase tracking-widest text-teal-800/80">OVERALL OBSERVATION</p>
+              </div>
+              <p className="text-[17px] font-bold leading-snug text-slate-800 transition-colors group-hover:text-teal-900">
                 {reportBundle?.caregiver.observationsText ??
                   (result.concerns.overallLevel === "none"
                     ? "No notable gait concern signals were detected in this clip."
                     : "This clip shows movement patterns worth reviewing more closely.")}
               </p>
               {reportBundle?.caregiver.contextSignalText && (
-                <p className="mt-2 text-sm font-medium text-slate-600">
+                <p className="mt-3 text-[13px] font-medium text-slate-500 leading-relaxed bg-white/50 p-2 rounded-lg border border-slate-100">
                   {reportBundle.caregiver.contextSignalText}
                 </p>
               )}
             </div>
-            <div className="group border-l border-white/40 pl-6">
-              <p className="text-[11px] font-extrabold uppercase tracking-widest text-[#5c7a76] mb-2">How certain this run is</p>
-              <p className="text-sm font-medium text-slate-700 leading-relaxed">
+            
+            <div className="group transition-transform duration-300 hover:-translate-y-1 sm:px-6 pt-6 sm:pt-0">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="rounded-full bg-indigo-100/80 p-1.5 text-indigo-700 ring-1 ring-indigo-200/50">
+                  <BarChart3 className="h-3.5 w-3.5" />
+                </div>
+                <p className="text-[11px] font-bold uppercase tracking-widest text-indigo-800/80">HOW CERTAIN THIS RUN IS</p>
+              </div>
+              <p className="text-[14px] font-medium text-slate-600 leading-relaxed">
                 {reportBundle?.caregiver.confidenceText ?? result.quality.confidenceNotes}
               </p>
             </div>
-            <div className="group border-l border-white/40 pl-6">
-              <p className="text-[11px] font-extrabold uppercase tracking-widest text-[#5c7a76] mb-2">Recommended next step</p>
-              <Badge variant="outline" className={`mb-2 text-[10px] uppercase font-bold tracking-wider shadow-sm ${FOLLOWUP_BADGE_STYLES[followupPriority]}`}>
+
+            <div className="group transition-transform duration-300 hover:-translate-y-1 sm:pl-6 pt-6 sm:pt-0">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="rounded-full bg-blue-100/80 p-1.5 text-blue-700 ring-1 ring-blue-200/50">
+                  <Stethoscope className="h-3.5 w-3.5" />
+                </div>
+                <p className="text-[11px] font-bold uppercase tracking-widest text-blue-800/80">RECOMMENDED NEXT STEP</p>
+              </div>
+              <Badge variant="outline" className={`mb-3 py-1 px-2.5 text-[10px] uppercase font-bold tracking-widest shadow-sm ${FOLLOWUP_BADGE_STYLES[followupPriority]}`}>
                 {followupLabel}
               </Badge>
-              <p className="text-sm font-medium text-slate-700 leading-relaxed">
+              <p className="text-[14px] font-medium text-slate-600 leading-relaxed">
                 {followupSummary}
               </p>
             </div>
@@ -1172,41 +1194,44 @@ export default function ResultsPage() {
               </div>
             </details>
 
-            <div className="flex flex-wrap gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:flex md:flex-wrap gap-3">
               <Button
-                variant="secondary"
-                className="flex-1 gap-2 text-sm font-semibold"
+                variant="outline"
+                className="flex-1 min-w-[160px] gap-2 py-6 text-sm font-semibold rounded-2xl bg-white/70 backdrop-blur border-slate-200/60 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:bg-white text-slate-700 transition-all duration-300"
                 onClick={() => router.push(`/concern?mode=supplemental&resultId=${resultId}`)}
               >
-                {hasMotorScreenAttached ? "Update motor milestone check" : "Run motor milestone check"}
+                <Activity className="h-4 w-4 text-emerald-500" />
+                <span className="truncate">{hasMotorScreenAttached ? "Update motor check" : "Run motor check"}</span>
               </Button>
               <Button
-                variant="secondary"
-                className="flex-1 gap-2 text-sm font-semibold"
+                variant="outline"
+                className="flex-1 min-w-[160px] gap-2 py-6 text-sm font-semibold rounded-2xl bg-white/70 backdrop-blur border-slate-200/60 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:bg-white text-slate-700 transition-all duration-300"
                 onClick={() => router.push(`/results/${resultId}/refine`)}
               >
-                Add notes for clinician
+                <MessageSquare className="h-4 w-4 text-indigo-500" />
+                Add clinician notes
               </Button>
               <Button
-                variant="secondary"
-                className="flex-1 gap-2 text-sm font-semibold"
+                variant="outline"
+                className="flex-1 min-w-[160px] gap-2 py-6 text-sm font-semibold rounded-2xl bg-white/70 backdrop-blur border-slate-200/60 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:bg-white text-slate-700 transition-all duration-300"
                 onClick={() => router.push(`/results/${resultId}/clinician`)}
               >
-                Open clinician packet
+                <Stethoscope className="h-4 w-4 text-blue-500" />
+                Open packet
               </Button>
               {hasTrace && (
                 <Button
-                  variant="secondary"
-                  className="flex-1 gap-2 text-sm font-semibold"
+                  variant="outline"
+                  className="flex-1 min-w-[160px] gap-2 py-6 text-sm font-semibold rounded-2xl bg-white/70 backdrop-blur border-slate-200/60 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:bg-white text-slate-700 transition-all duration-300"
                   onClick={() => setActiveTab("video")}
                 >
-                  <Video className="h-3.5 w-3.5" />
-                  View annotated video
+                  <PlayCircle className="h-4 w-4 text-amber-500" />
+                  View video
                 </Button>
               )}
               <Button
-                variant="secondary"
-                className="flex-1 gap-2 text-sm font-semibold"
+                variant="outline"
+                className="flex-1 min-w-[160px] gap-2 py-6 text-sm font-semibold rounded-2xl bg-white/70 backdrop-blur border-slate-200/60 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:bg-white text-slate-700 transition-all duration-300"
                 onClick={() => {
                   const session = readSession<{
                     nickname?: string;
@@ -1237,15 +1262,15 @@ export default function ResultsPage() {
                 }}
                 id="btn-export-pdf"
               >
-                <Download className="h-3.5 w-3.5" />
-                Export summary PDF
+                <Download className="h-4 w-4 text-emerald-500" />
+                <span className="truncate">Export PDF</span>
               </Button>
               <Button
-                variant="secondary"
-                className="flex-1 gap-2 text-sm font-semibold"
+                variant="outline"
+                className="flex-1 min-w-[160px] gap-2 py-6 text-sm font-semibold rounded-2xl bg-white/70 backdrop-blur border-slate-200/60 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:bg-white text-slate-700 transition-all duration-300 w-full md:w-auto"
                 onClick={() => router.push("/capture")}
               >
-                <Camera className="h-3.5 w-3.5" />
+                <Camera className="h-4 w-4 text-slate-500" />
                 Record another clip
               </Button>
             </div>
@@ -1288,14 +1313,20 @@ export default function ResultsPage() {
                           <p className="text-sm font-semibold text-foreground">{spot.title}</p>
                           <p className="text-xs text-muted-foreground">{spot.description}</p>
                         </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-xs"
-                          onClick={() => handleFocusIssue(spot.frameIndex)}
-                        >
-                          Jump to this moment
-                        </Button>
+                        {canJumpToVideo ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs"
+                            onClick={() => handleFocusIssue(spot.frameIndex)}
+                          >
+                            Jump to this moment
+                          </Button>
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground/70 italic">
+                            Video not available
+                          </span>
+                        )}
                       </div>
                     ))}
                   </div>
