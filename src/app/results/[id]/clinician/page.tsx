@@ -970,7 +970,7 @@ export default function ClinicianResultPage() {
                         keyFrames={keyFrames}
                         trace={result.trace!}
                         videoUrl={videoUrl}
-                        renderMode="timestamps-only"
+                        renderMode="auto-thumbnails"
                         onFrameClick={(frameIndex: number) => setJumpToFrameIndex(frameIndex)}
                       />
                     )}
