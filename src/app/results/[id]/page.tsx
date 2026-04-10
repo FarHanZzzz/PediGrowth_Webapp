@@ -299,6 +299,34 @@ function normalizeResult(raw: string): AnalysisSessionResult {
   return parsed;
 }
 
+function formatDemoVideoPath(sourceClipFilename: string | null): string | null {
+  if (!sourceClipFilename) return null;
+  if (
+    sourceClipFilename.startsWith("/") ||
+    sourceClipFilename.startsWith("http://") ||
+    sourceClipFilename.startsWith("https://")
+  ) {
+    return sourceClipFilename;
+  }
+  return `/demo/videos/${sourceClipFilename}`;
+}
+
+function resolveFallbackVideoUrl(result: AnalysisSessionResult): string | null {
+  if (typeof result.videoUrl === "string" && result.videoUrl.trim().length > 0) {
+    return result.videoUrl;
+  }
+
+  if (result.run.classification !== "real_analysis") {
+    return formatDemoVideoPath(result.run.sourceClipFilename ?? null);
+  }
+
+  if (typeof result.run.exportArtifactPath === "string" && result.run.exportArtifactPath.trim().length > 0) {
+    return result.run.exportArtifactPath;
+  }
+
+  return null;
+}
+
 function formatDomainLabel(domain: string): string {
   return domain.charAt(0).toUpperCase() + domain.slice(1).replace(/([A-Z])/g, " $1");
 }
@@ -372,7 +400,15 @@ export default function ResultsPage() {
   }, [result, resultId]);
 
   useEffect(() => {
-    if (!result || result.run.classification !== "real_analysis") return;
+    if (!result) {
+      setVideoUrl(null);
+      return;
+    }
+
+    if (result.run.classification !== "real_analysis") {
+      setVideoUrl(resolveFallbackVideoUrl(result));
+      return;
+    }
 
     const sessionId =
       result.trace?.sessionId ??
@@ -381,18 +417,24 @@ export default function ResultsPage() {
         return session?.sessionId ?? null;
       })();
 
-    if (!sessionId) return;
+    if (!sessionId) {
+      setVideoUrl(resolveFallbackVideoUrl(result));
+      return;
+    }
 
     let objectUrl: string | null = null;
     import("@/lib/session/videoStore")
       .then(({ getVideo }) => getVideo(sessionId))
       .then((videoData) => {
-        if (!videoData?.blob) return;
+        if (!videoData?.blob) {
+          setVideoUrl(resolveFallbackVideoUrl(result));
+          return;
+        }
         objectUrl = URL.createObjectURL(videoData.blob);
         setVideoUrl(objectUrl);
       })
       .catch(() => {
-        setVideoUrl(null);
+        setVideoUrl(resolveFallbackVideoUrl(result));
       });
 
     return () => {
@@ -796,7 +838,7 @@ export default function ResultsPage() {
         </div>
 
         <Card className="relative overflow-hidden border-0 bg-white/60 backdrop-blur-2xl shadow-xl shadow-black/5 ring-1 ring-white/80 transition-all hover:shadow-2xl hover:bg-white/80">
-          <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-transparent pointer-events-none" />
+          <div className="absolute inset-0 bg-linear-to-br from-white/40 to-transparent pointer-events-none" />
           <CardContent className="relative grid gap-6 p-6 sm:grid-cols-3">
             <div className="group">
               <p className="text-[11px] font-extrabold uppercase tracking-widest text-[#5c7a76] mb-2">Overall observation</p>
@@ -851,7 +893,7 @@ export default function ResultsPage() {
         </div>
 
         {result.clinicianFeedback && (
-          <div className="relative overflow-hidden rounded-[1.5rem] bg-indigo-50/80 p-6 shadow-md ring-1 ring-indigo-200/50 backdrop-blur-sm border-l-4 border-l-indigo-500">
+          <div className="relative overflow-hidden rounded-3xl bg-indigo-50/80 p-6 shadow-md ring-1 ring-indigo-200/50 backdrop-blur-sm border-l-4 border-l-indigo-500">
             <div className="absolute top-0 right-0 p-4 opacity-[0.03] pointer-events-none transform translate-x-4 -translate-y-4">
               <MessageSquare className="h-40 w-40 text-indigo-900" />
             </div>
@@ -864,7 +906,7 @@ export default function ResultsPage() {
                   New Message From Your Clinical Care Team
                 </p>
                 <p className="text-xl font-medium text-slate-800 leading-relaxed max-w-3xl">
-                  "{result.clinicianFeedback.note}"
+                  &quot;{result.clinicianFeedback.note}&quot;
                 </p>
                 <p className="text-xs font-semibold text-indigo-900/50 mt-3 block">
                   Sent on {new Date(result.clinicianFeedback.updatedAt).toLocaleString()}
@@ -877,7 +919,7 @@ export default function ResultsPage() {
         {activeTab === "summary" && (
           <div className="space-y-4">
             <div
-              className={`relative overflow-hidden rounded-[1.5rem] p-6 shadow-lg shadow-black/5 ring-1 border-0 ${FOLLOWUP_CALLOUT_STYLES[followupPriority]}`}
+              className={`relative overflow-hidden rounded-3xl p-6 shadow-lg shadow-black/5 ring-1 border-0 ${FOLLOWUP_CALLOUT_STYLES[followupPriority]}`}
               role={followupPriority === "specialist" ? "alert" : undefined}
             >
               <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none transform translate-x-4 -translate-y-4">
