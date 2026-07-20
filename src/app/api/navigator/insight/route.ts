@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { checkLanguageSafety } from "@/lib/policy/language-safety";
 
 const DEFAULT_MODEL = "gpt-4o-mini";
-const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
+const OPENAI_URL = "http://localhost:3001/v1/chat/completions";
 const DISCLAIMER =
   "AI insight is evidence-grounded screening support. It does not diagnose medical conditions and must be interpreted with professional clinical review.";
 
@@ -157,15 +157,16 @@ function buildPrompt(body: InsightRequestBody): string {
 }
 
 async function requestAiInsight(body: InsightRequestBody): Promise<InsightPayload> {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     return buildDeterministicFallback();
   }
 
-  const model = process.env.OPENAI_MODEL?.trim() || DEFAULT_MODEL;
+  const model = process.env.OPENROUTER_MODEL?.trim() || DEFAULT_MODEL;
+  const endpoint = process.env.OPENROUTER_API_URL?.trim() || OPENAI_URL;
   const prompt = buildPrompt(body);
 
-  const response = await fetch(OPENAI_URL, {
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -185,7 +186,6 @@ async function requestAiInsight(body: InsightRequestBody): Promise<InsightPayloa
           content: prompt,
         },
       ],
-      response_format: { type: "json_object" },
       max_tokens: 350,
     }),
     signal: AbortSignal.timeout(15000),
@@ -215,7 +215,8 @@ async function requestAiInsight(body: InsightRequestBody): Promise<InsightPayloa
   }
 
   try {
-    const parsed = JSON.parse(rawContent) as Partial<InsightPayload>;
+    const cleanContent = rawContent.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
+    const parsed = JSON.parse(cleanContent) as Partial<InsightPayload>;
     return normalizeInsightPayload(parsed, "ai");
   } catch {
     return buildDeterministicFallback(

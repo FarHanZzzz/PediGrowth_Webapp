@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import {
   generateExplanation,
-  DashScopeError,
+  OpenRouterError,
   type ProviderMessage,
-} from '@/lib/copilot/dashscope-provider';
+} from '@/lib/copilot/openrouter-provider';
 import {
   NAVIGATOR_REFUSAL_RESPONSES,
   NAVIGATOR_SYSTEM_PROMPT,
@@ -925,7 +925,7 @@ export async function POST(req: Request) {
         citations,
         'mock'
       );
-    } else if (process.env.DASHSCOPE_API_KEY && process.env.DASHSCOPE_MODEL) {
+    } else if (process.env.OPENROUTER_API_KEY && process.env.OPENROUTER_MODEL) {
       traceStage({
         stage: 'model_synthesis',
         strategy: 'llm',
@@ -944,10 +944,8 @@ export async function POST(req: Request) {
         const result = await generateExplanation(
           llmMessages,
           {
-            apiKey: process.env.DASHSCOPE_API_KEY,
-            model: process.env.DASHSCOPE_MODEL,
-            apiUrl: process.env.DASHSCOPE_API_URL,
-            compatibleBaseUrl: process.env.DASHSCOPE_OPENAI_COMPATIBLE_URL,
+            apiKey: process.env.OPENROUTER_API_KEY,
+            model: process.env.OPENROUTER_MODEL,
           },
           {
             temperature: mode === 'clinician' ? 0.15 : 0.2,
@@ -974,7 +972,7 @@ export async function POST(req: Request) {
           filterReason: null,
         };
       } catch (error) {
-        if (error instanceof DashScopeError) {
+        if (error instanceof OpenRouterError) {
           traceStage({
             stage: 'model_synthesis',
             strategy: 'fallback',

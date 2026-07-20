@@ -47,11 +47,11 @@ export default function GMFCSCard({
   return (
     <Card className="print-section">
       <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-sm">
+        <CardTitle className="flex items-center gap-2 text-base font-bold">
           <Info className="h-4 w-4" />
           Standardized Scale: GMFCS Classification
         </CardTitle>
-        <p className="text-xs text-muted-foreground mt-1">
+        <p className="text-sm text-muted-foreground mt-1 font-medium">
           Gross Motor Function Classification System (Palisano et al., 1997; revised 2007).
           {interactive
             ? " Select the level that best matches your clinical assessment."
@@ -86,14 +86,14 @@ export default function GMFCSCard({
                     >
                       Level {level.level}
                     </Badge>
-                    <span className="text-xs font-semibold text-foreground">
+                    <span className="text-sm font-bold text-foreground">
                       {level.title.replace(`Level ${level.level} — `, "")}
                     </span>
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+                  <p className="mt-1.5 text-sm text-muted-foreground leading-relaxed font-medium">
                     {level.description}
                   </p>
-                  <p className="mt-1 text-[11px] font-medium text-foreground/70">
+                  <p className="mt-1.5 text-[12px] font-semibold text-foreground/70">
                     → {level.functionalSummary}
                   </p>
                 </div>

@@ -602,15 +602,15 @@ export default function ClinicianResultPage() {
 
   return (
     <div className="clinician-packet min-h-dvh bg-slate-50/50 pb-12">
-      {isBestEffort && (
-        <div className="print-hidden border-b border-amber-200 bg-amber-50 px-4 py-2">
-          <p className="text-xs text-amber-700 font-medium">
-            Preliminary packet: some domains are marked as not assessed due to limited confidence.
-          </p>
-        </div>
-      )}
-
       <div className="clinician-packet__content mx-auto max-w-6xl space-y-4 px-4 py-6">
+        {isBestEffort && (
+          <div className="print-hidden rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 shadow-sm">
+            <p className="text-sm text-amber-700 font-medium text-center">
+              Preliminary packet: some domains are marked as not assessed due to limited confidence.
+            </p>
+          </div>
+        )}
+
         <div className="space-y-2">
           <div className="print-hidden inline-flex items-center rounded-xl border border-border/60 bg-surface-container-low p-1">
             <button
@@ -712,11 +712,11 @@ export default function ClinicianResultPage() {
 
                   return (
                     <div key={domain.key} className="relative overflow-hidden rounded-xl border border-slate-200/60 bg-white/80 p-4 shadow-sm backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md">
-                      <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-3">{domain.label}</p>
+                      <p className="text-[13px] font-bold text-slate-700 uppercase tracking-wide mb-3">{domain.label}</p>
                       <div className="flex flex-col gap-2 items-start">
                         <Badge
                           variant="outline"
-                          className={`text-[11px] px-2.5 py-0.5 font-bold shadow-xs ${
+                          className={`text-[12px] px-2.5 py-0.5 font-bold shadow-xs ${
                             isSuppressed
                               ? "border-amber-300 bg-amber-50 text-amber-800"
                               : CONCERN_BADGE_STYLES[level]
@@ -724,7 +724,7 @@ export default function ClinicianResultPage() {
                         >
                           {isSuppressed ? "Not assessed" : CONCERN_LABELS[level]}
                         </Badge>
-                        <p className="text-[12px] text-slate-600 leading-relaxed mt-1 line-clamp-3">
+                        <p className="text-[13px] text-slate-700 font-medium leading-relaxed mt-1 line-clamp-3">
                           {evidence?.explanation ?? "No detailed narrative available."}
                         </p>
                       </div>
