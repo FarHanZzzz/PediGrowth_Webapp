@@ -659,7 +659,7 @@ export default function ResultsPage() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-dvh items-center justify-center px-4 bg-slate-50/50">
+      <div className="flex min-h-dvh items-center justify-center px-4 bg-surface-container-low/50">
         <div className="text-center space-y-4">
           <Activity className="h-10 w-10 text-muted-foreground/50 mx-auto animate-spin" />
           <p className="text-sm text-muted-foreground font-medium">
@@ -859,7 +859,7 @@ export default function ResultsPage() {
           </p>
         </div>
 
-        <Card className="relative overflow-hidden border border-indigo-100/50 bg-white/70 backdrop-blur-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all duration-500 hover:shadow-[0_12px_40px_rgb(0,0,0,0.08)] hover:bg-white/90 group/card">
+        <Card className="relative overflow-hidden border border-indigo-100/50 bg-card/70 backdrop-blur-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all duration-500 hover:shadow-[0_12px_40px_rgb(0,0,0,0.08)] hover:bg-card/90 group/card">
           <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/50 via-white/20 to-teal-50/30 opacity-70 pointer-events-none" />
           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-teal-400 via-indigo-400 to-blue-500 opacity-80" />
           <CardContent className="relative grid gap-8 p-8 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-slate-200/60">
@@ -870,14 +870,14 @@ export default function ResultsPage() {
                 </div>
                 <p className="text-[11px] font-bold uppercase tracking-widest text-teal-800/80">OVERALL OBSERVATION</p>
               </div>
-              <p className="text-[17px] font-bold leading-snug text-slate-800 transition-colors group-hover:text-teal-900">
+              <p className="text-[17px] font-bold leading-snug text-foreground transition-colors group-hover:text-teal-900">
                 {reportBundle?.caregiver.observationsText ??
                   (result.concerns.overallLevel === "none"
                     ? "No notable gait concern signals were detected in this clip."
                     : "This clip shows movement patterns worth reviewing more closely.")}
               </p>
               {reportBundle?.caregiver.contextSignalText && (
-                <p className="mt-3 text-[13px] font-medium text-slate-500 leading-relaxed bg-white/50 p-2 rounded-lg border border-slate-100">
+                <p className="mt-3 text-[13px] font-medium text-muted-foreground leading-relaxed bg-card/50 p-2 rounded-lg border border-border/50">
                   {reportBundle.caregiver.contextSignalText}
                 </p>
               )}
@@ -885,12 +885,12 @@ export default function ResultsPage() {
             
             <div className="group transition-transform duration-300 hover:-translate-y-1 sm:px-6 pt-6 sm:pt-0">
               <div className="flex items-center gap-2 mb-3">
-                <div className="rounded-full bg-indigo-100/80 p-1.5 text-indigo-700 ring-1 ring-indigo-200/50">
+                <div className="rounded-full bg-indigo-100/80 p-1.5 text-primary ring-1 ring-indigo-200/50">
                   <BarChart3 className="h-3.5 w-3.5" />
                 </div>
                 <p className="text-[11px] font-bold uppercase tracking-widest text-indigo-800/80">HOW CERTAIN THIS RUN IS</p>
               </div>
-              <p className="text-[14px] font-medium text-slate-600 leading-relaxed">
+              <p className="text-[14px] font-medium text-muted-foreground leading-relaxed">
                 {reportBundle?.caregiver.confidenceText ?? result.quality.confidenceNotes}
               </p>
             </div>
@@ -905,14 +905,14 @@ export default function ResultsPage() {
               <Badge variant="outline" className={`mb-3 py-1 px-2.5 text-[10px] uppercase font-bold tracking-widest shadow-sm ${FOLLOWUP_BADGE_STYLES[followupPriority]}`}>
                 {followupLabel}
               </Badge>
-              <p className="text-[14px] font-medium text-slate-600 leading-relaxed">
+              <p className="text-[14px] font-medium text-muted-foreground leading-relaxed">
                 {followupSummary}
               </p>
             </div>
           </CardContent>
         </Card>
 
-        <div className="flex rounded-[1.25rem] bg-white/40 p-1.5 backdrop-blur-xl shadow-inner ring-1 ring-black/5 mx-auto max-w-2xl">
+        <div className="flex rounded-[1.25rem] bg-card/40 p-1.5 backdrop-blur-xl shadow-inner ring-1 ring-black/5 mx-auto max-w-2xl">
           {TABS.map((tab) => {
             const Icon = tab.icon;
             return (
@@ -921,8 +921,8 @@ export default function ResultsPage() {
                 onClick={() => setActiveTab(tab.key)}
                 className={`flex-1 flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold transition-all duration-300 cursor-pointer ${
                   activeTab === tab.key
-                    ? "bg-white text-slate-800 shadow-md ring-1 ring-white"
-                    : "text-slate-500 hover:text-slate-800 hover:bg-white/50"
+                    ? "bg-card text-foreground shadow-md ring-1 ring-white"
+                    : "text-muted-foreground hover:text-foreground hover:bg-card/50"
                 }`}
               >
                 <Icon className={`h-4 w-4 ${activeTab === tab.key ? "opacity-100" : "opacity-70"}`} />
@@ -933,22 +933,22 @@ export default function ResultsPage() {
         </div>
 
         {result.clinicianFeedback && (
-          <div className="relative overflow-hidden rounded-3xl bg-indigo-50/80 p-6 shadow-md ring-1 ring-indigo-200/50 backdrop-blur-sm border-l-4 border-l-indigo-500">
+          <div className="relative overflow-hidden rounded-3xl bg-primary-container/80 p-6 shadow-md ring-1 ring-indigo-200/50 backdrop-blur-sm border-l-4 border-l-indigo-500">
             <div className="absolute top-0 right-0 p-4 opacity-[0.03] pointer-events-none transform translate-x-4 -translate-y-4">
-              <MessageSquare className="h-40 w-40 text-indigo-900" />
+              <MessageSquare className="h-40 w-40 text-primary-foreground" />
             </div>
             <div className="relative z-10 flex gap-5 md:items-center">
-              <div className="mt-1 shrink-0 rounded-full bg-indigo-100 p-3 text-indigo-700 ring-1 ring-indigo-200 shadow-sm hidden sm:block">
+              <div className="mt-1 shrink-0 rounded-full bg-indigo-100 p-3 text-primary ring-1 ring-indigo-200 shadow-sm hidden sm:block">
                 <Stethoscope className="h-6 w-6" />
               </div>
               <div className="space-y-1">
-                <p className="text-[11px] font-extrabold uppercase tracking-widest text-indigo-900/60 mb-2">
+                <p className="text-[11px] font-extrabold uppercase tracking-widest text-primary-foreground/60 mb-2">
                   New Message From Your Clinical Care Team
                 </p>
-                <p className="text-xl font-medium text-slate-800 leading-relaxed max-w-3xl">
+                <p className="text-xl font-medium text-foreground leading-relaxed max-w-3xl">
                   &quot;{result.clinicianFeedback.note}&quot;
                 </p>
-                <p className="text-xs font-semibold text-indigo-900/50 mt-3 block">
+                <p className="text-xs font-semibold text-primary-foreground/50 mt-3 block">
                   Sent on {new Date(result.clinicianFeedback.updatedAt).toLocaleString()}
                 </p>
               </div>
@@ -1215,7 +1215,7 @@ export default function ResultsPage() {
             <div className="grid grid-cols-2 sm:grid-cols-3 md:flex md:flex-wrap gap-3">
               <Button
                 variant="outline"
-                className="flex-1 min-w-[160px] gap-2 py-6 text-sm font-semibold rounded-2xl bg-white/70 backdrop-blur border-slate-200/60 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:bg-white text-slate-700 transition-all duration-300"
+                className="flex-1 min-w-[160px] gap-2 py-6 text-sm font-semibold rounded-2xl bg-card/70 backdrop-blur border-border/60 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:bg-card text-foreground/90 transition-all duration-300"
                 onClick={() => router.push(`/concern?mode=supplemental&resultId=${resultId}`)}
               >
                 <Activity className="h-4 w-4 text-emerald-500" />
@@ -1223,7 +1223,7 @@ export default function ResultsPage() {
               </Button>
               <Button
                 variant="outline"
-                className="flex-1 min-w-[160px] gap-2 py-6 text-sm font-semibold rounded-2xl bg-white/70 backdrop-blur border-slate-200/60 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:bg-white text-slate-700 transition-all duration-300"
+                className="flex-1 min-w-[160px] gap-2 py-6 text-sm font-semibold rounded-2xl bg-card/70 backdrop-blur border-border/60 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:bg-card text-foreground/90 transition-all duration-300"
                 onClick={() => router.push(`/results/${resultId}/refine`)}
               >
                 <MessageSquare className="h-4 w-4 text-indigo-500" />
@@ -1231,7 +1231,7 @@ export default function ResultsPage() {
               </Button>
               <Button
                 variant="outline"
-                className="flex-1 min-w-[160px] gap-2 py-6 text-sm font-semibold rounded-2xl bg-white/70 backdrop-blur border-slate-200/60 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:bg-white text-slate-700 transition-all duration-300"
+                className="flex-1 min-w-[160px] gap-2 py-6 text-sm font-semibold rounded-2xl bg-card/70 backdrop-blur border-border/60 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:bg-card text-foreground/90 transition-all duration-300"
                 onClick={() => router.push(`/results/${resultId}/clinician`)}
               >
                 <Stethoscope className="h-4 w-4 text-blue-500" />
@@ -1240,7 +1240,7 @@ export default function ResultsPage() {
               {hasTrace && (
                 <Button
                   variant="outline"
-                  className="flex-1 min-w-[160px] gap-2 py-6 text-sm font-semibold rounded-2xl bg-white/70 backdrop-blur border-slate-200/60 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:bg-white text-slate-700 transition-all duration-300"
+                  className="flex-1 min-w-[160px] gap-2 py-6 text-sm font-semibold rounded-2xl bg-card/70 backdrop-blur border-border/60 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:bg-card text-foreground/90 transition-all duration-300"
                   onClick={() => setActiveTab("video")}
                 >
                   <PlayCircle className="h-4 w-4 text-amber-500" />
@@ -1249,7 +1249,7 @@ export default function ResultsPage() {
               )}
               <Button
                 variant="outline"
-                className="flex-1 min-w-[160px] gap-2 py-6 text-sm font-semibold rounded-2xl bg-white/70 backdrop-blur border-slate-200/60 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:bg-white text-slate-700 transition-all duration-300"
+                className="flex-1 min-w-[160px] gap-2 py-6 text-sm font-semibold rounded-2xl bg-card/70 backdrop-blur border-border/60 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:bg-card text-foreground/90 transition-all duration-300"
                 onClick={() => {
                   const session = readSession<{
                     nickname?: string;
@@ -1285,10 +1285,10 @@ export default function ResultsPage() {
               </Button>
               <Button
                 variant="outline"
-                className="flex-1 min-w-[160px] gap-2 py-6 text-sm font-semibold rounded-2xl bg-white/70 backdrop-blur border-slate-200/60 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:bg-white text-slate-700 transition-all duration-300 w-full md:w-auto"
+                className="flex-1 min-w-[160px] gap-2 py-6 text-sm font-semibold rounded-2xl bg-card/70 backdrop-blur border-border/60 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:bg-card text-foreground/90 transition-all duration-300 w-full md:w-auto"
                 onClick={() => router.push("/capture")}
               >
-                <Camera className="h-4 w-4 text-slate-500" />
+                <Camera className="h-4 w-4 text-muted-foreground" />
                 Record another clip
               </Button>
             </div>

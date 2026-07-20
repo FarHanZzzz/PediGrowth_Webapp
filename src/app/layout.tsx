@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Manrope, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
+import { ThemeProvider } from "@/components/ThemeProvider";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 const manrope = Manrope({
   subsets: ["latin"],
@@ -43,7 +45,19 @@ export default function RootLayout({
       className={`${manrope.variable} ${sourceSerif.variable}`}
     >
       <body className="font-sans antialiased" suppressHydrationWarning>
-        <div className="clinical-shell">{children}</div>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <div className="clinical-shell">
+            {children}
+            <div className="fixed bottom-4 right-4 z-50 print-hidden bg-background/50 backdrop-blur-md rounded-full shadow-lg border border-border/50">
+              <ThemeToggle />
+            </div>
+          </div>
+        </ThemeProvider>
       </body>
     </html>
   );

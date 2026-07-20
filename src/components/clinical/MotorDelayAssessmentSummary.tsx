@@ -64,7 +64,7 @@ export default function MotorDelayAssessmentSummary({
       {/* ── Severity Header Strip ──────────────────────────────── */}
       <div className={`px-5 py-4 ${config.headerBg}`}>
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-card/20 backdrop-blur-sm">
             <Baby className="h-5 w-5" />
           </div>
           <div>

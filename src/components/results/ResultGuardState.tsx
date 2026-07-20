@@ -31,7 +31,7 @@ export default function ResultGuardState({ result }: Props) {
             </CardHeader>
             <CardContent className="space-y-3 text-sm text-red-900/85">
               <p>{run.failureReason ?? "The pipeline stopped before producing a trustworthy result."}</p>
-              <div className="rounded-lg bg-white/70 p-3 text-xs">
+              <div className="rounded-lg bg-card/70 p-3 text-xs">
                 <p><strong>Stage:</strong> {run.failureStage ?? "unknown"}</p>
                 <p><strong>Source:</strong> {run.sourceClipFilename ?? "unknown clip"}</p>
                 <p><strong>Model:</strong> {run.modelLabel}</p>

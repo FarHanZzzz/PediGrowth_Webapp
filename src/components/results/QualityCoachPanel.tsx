@@ -118,7 +118,7 @@ export default function QualityCoachPanel({ result, onRecordAgain }: Props) {
             <div className="mt-2 space-y-2">
               {suppressionReasons.length > 0 ? (
                 suppressionReasons.map((entry) => (
-                  <div key={entry.domain} className="rounded-lg bg-white/75 p-2.5">
+                  <div key={entry.domain} className="rounded-lg bg-card/75 p-2.5">
                     <p className="text-xs font-semibold text-amber-900">{formatDomainLabel(entry.domain)}</p>
                     <p className="mt-1 text-xs text-amber-900/80">{entry.reason}</p>
                     {entry.metrics.length > 0 && (
@@ -176,7 +176,7 @@ export default function QualityCoachPanel({ result, onRecordAgain }: Props) {
                   className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs transition-colors ${
                     reviewed
                       ? "bg-green-100/70 text-green-900"
-                      : "bg-white/70 text-foreground hover:bg-secondary/10"
+                      : "bg-card/70 text-foreground hover:bg-secondary/10"
                   }`}
                   onClick={() => {
                     setReviewedChecklist((prev) =>

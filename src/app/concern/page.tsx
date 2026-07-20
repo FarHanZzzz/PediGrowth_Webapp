@@ -523,15 +523,15 @@ function ConcernPageContent() {
             >
               <div className="flex items-center gap-3">
                 {motorAssessment.delayFlag === "concern" ? (
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-card/20 backdrop-blur-sm">
                     <AlertTriangle className="h-5 w-5" />
                   </div>
                 ) : motorAssessment.delayFlag === "watch" ? (
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-card/20 backdrop-blur-sm">
                     <AlertTriangle className="h-5 w-5" />
                   </div>
                 ) : (
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-card/20 backdrop-blur-sm">
                     <CheckCircle2 className="h-5 w-5" />
                   </div>
                 )}
@@ -612,7 +612,7 @@ function ConcernPageContent() {
                       {/* Milestone items */}
                       <div className="divide-y divide-red-100/50">
                         {band.milestones.map((m) => (
-                          <div key={m.id} className="px-4 py-2.5 flex items-start gap-3 bg-white/50">
+                          <div key={m.id} className="px-4 py-2.5 flex items-start gap-3 bg-card/50">
                             <AlertTriangle className="h-3.5 w-3.5 text-red-400 mt-0.5 shrink-0" />
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-medium text-foreground leading-snug">

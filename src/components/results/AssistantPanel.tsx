@@ -435,7 +435,7 @@ export default function AssistantPanel({
                           setInput(prompt);
                           inputRef.current?.focus();
                         }}
-                        className="block w-full rounded border bg-white p-2 text-left text-xs transition-colors hover:border-blue-300 hover:bg-blue-50"
+                        className="block w-full rounded border bg-card p-2 text-left text-xs transition-colors hover:border-blue-300 hover:bg-blue-50"
                       >
                         {prompt}
                       </button>
@@ -498,7 +498,7 @@ export default function AssistantPanel({
                         key={spot.id}
                         type="button"
                         onClick={() => onFocusIssue?.(spot.frameIndex)}
-                        className="w-full rounded border bg-white px-2 py-2 text-left text-xs transition-colors hover:border-blue-400 hover:bg-blue-50"
+                        className="w-full rounded border bg-card px-2 py-2 text-left text-xs transition-colors hover:border-blue-400 hover:bg-blue-50"
                         disabled={!onFocusIssue}
                       >
                         <div className="flex items-center justify-between gap-2">
@@ -542,7 +542,7 @@ export default function AssistantPanel({
                         setInput(prompt);
                         inputRef.current?.focus();
                       }}
-                      className="shrink-0 rounded-full border bg-white px-2 py-1 text-[11px] text-muted-foreground hover:border-blue-300 hover:text-blue-700"
+                      className="shrink-0 rounded-full border bg-card px-2 py-1 text-[11px] text-muted-foreground hover:border-blue-300 hover:text-blue-700"
                       disabled={isLoading}
                     >
                       {prompt}
