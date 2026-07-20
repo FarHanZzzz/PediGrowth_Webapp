@@ -616,13 +616,6 @@ export default function ClinicianResultPage() {
   return (
     <div className="clinician-packet min-h-dvh bg-surface-container-low/50 pb-12">
       <div className="clinician-packet__content mx-auto max-w-6xl space-y-4 px-4 py-6">
-        {isBestEffort && (
-          <div className="print-hidden rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 shadow-sm">
-            <p className="text-sm text-amber-700 font-medium text-center">
-              Preliminary packet: some domains are marked as not assessed due to limited confidence.
-            </p>
-          </div>
-        )}
 
         <div className="space-y-2">
           <div className="print-hidden inline-flex items-center rounded-xl border border-border/60 bg-surface-container-low p-1">
