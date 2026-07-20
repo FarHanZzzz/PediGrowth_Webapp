@@ -73,3 +73,26 @@
 ## Slide 15: Economic Impact & Cost-Benefit
 **Speech:**
 "But beyond the financial returns, the most important metric for us is the economic and societal impact. Consider the structural reality in Bangladesh: there are only 6.8 rehabilitation units per one million people, almost all located in urban centers. This creates massive travel and financial friction. Pedi-Growth drives a structural shift. With zero hardware CAPEX, we leverage existing infrastructure—the smartphones already in people's pockets. The program hits immediate break-even if operating costs remain below $16.80 per child per year, which is easily achievable via our edge-compute architecture. When we look at the quantified annual benefits based on population surveillance data, the results are staggering. We project that children will receive a diagnosis and start rehab 1.8 years earlier. We project a 31.2% increase in overall rehab uptake. And for the families, we save an average of 95 kilometers in travel and $16.80 in out-of-pocket costs per visit. Pedi-Growth isn't just a clinical tool; it is a fundamental restructuring of how pediatric care accesses the most vulnerable."
+
+---
+
+## 2-Minute Hackathon Pitch Script
+*(Target Time: ~1:45s to leave room for judging/breathing)*
+
+"Hi everyone, we are the team behind Pedi-Growth.
+
+Imagine noticing your toddler has a limp. You wait months to see a specialist, only for the doctor to watch them walk for 30 seconds and say, 'Let's wait and see.' 
+
+In places like South Asia, by the time a child receives a formal diagnosis for something like Cerebral Palsy, they are often five years old. But the critical window for physical therapy closes at age three. We are losing crucial years of a child's development just because we can't measure the problem early enough. A formal clinical gait lab costs $100,000 to build, meaning there are practically zero public labs accessible to rural families. 
+
+That's why we built Pedi-Growth. We turn any standard smartphone into a clinical-grade movement lab. 
+
+Here's how it works: A parent simply records a 5-second video of their child walking at home. Our AI, running entirely local on the phone, tracks 33 skeletal points and instantly calculates a risk score. It requires zero hardware, works offline, and because the video never leaves the device, it is completely private. 
+
+We aren't replacing doctors; we're empowering them. That 5-second video automatically translates into a rich data dashboard for the pediatrician, meaning they start the appointment with objective data rather than just guessing. 
+
+Our business model is highly scalable. The tool is 100% free for parents. We monetize by licensing our dashboard and API to clinics, telemedicine platforms, and NGOs. 
+
+With Pedi-Growth, we can catch motor delays almost two years earlier. We are democratizing pediatric care—taking a $100,000 lab and putting it directly into the pockets of the parents who need it most. 
+
+Thank you."

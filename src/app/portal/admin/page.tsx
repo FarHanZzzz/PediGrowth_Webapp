@@ -96,6 +96,9 @@ function buildAssessmentsFromSessionStorage(): AssessmentRow[] {
   });
 }
 
+
+
+
 function buildAssessmentsFromCloud(records: CloudResultRecord[]): AssessmentRow[] {
   const rows: AssessmentRow[] = [];
 
