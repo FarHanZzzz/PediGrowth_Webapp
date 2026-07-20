@@ -70,15 +70,17 @@ export function useResultViewModel(resultId: string): ResultViewModel {
 
   useEffect(() => {
     let active = true;
+    let timeoutId: NodeJS.Timeout;
+    let attempts = 0;
+    const maxAttempts = 15;
 
-    fetchResultFromCloud(resultId)
-      .then(async (cloudData) => {
-        if (!active) return;
+    const loadData = async () => {
+      try {
+        const cloudData = await fetchResultFromCloud(resultId);
         if (cloudData) {
+          if (!active) return;
           setResult(normalizeResult(JSON.stringify(cloudData)));
           setIsLoading(false);
-          
-          // Transparent cache to local indexedDB
           try {
             const { saveResult } = await import("@/lib/session/videoStore");
             await saveResult(resultId, cloudData);
@@ -86,33 +88,33 @@ export function useResultViewModel(resultId: string): ResultViewModel {
           return;
         }
 
-        // Fallback to local storage if cloud is missing or token is broken
         const raw = readResultRaw(resultId);
         if (raw) {
+          if (!active) return;
           setResult(normalizeResult(raw));
           setIsLoading(false);
           return;
         }
 
-        getResult(resultId)
-          .then((stored) => {
-            if (!active) return;
-            if (!stored) {
-              setResult(null);
-            } else {
-              writeResult(resultId, stored);
-              setResult(normalizeResult(JSON.stringify(stored)));
-            }
+        const stored = await getResult(resultId);
+        if (stored) {
+          if (!active) return;
+          writeResult(resultId, stored);
+          setResult(normalizeResult(JSON.stringify(stored)));
+          setIsLoading(false);
+          return;
+        }
+
+        if (attempts < maxAttempts) {
+          attempts++;
+          timeoutId = setTimeout(loadData, 1500);
+        } else {
+          if (active) {
+            setResult(null);
             setIsLoading(false);
-          })
-          .catch(() => {
-            if (active) {
-              setResult(null);
-              setIsLoading(false);
-            }
-          });
-      })
-      .catch((err) => {
+          }
+        }
+      } catch (err) {
         console.error("Cloud fetch failed:", err);
         if (!active) return;
         
@@ -123,10 +125,14 @@ export function useResultViewModel(resultId: string): ResultViewModel {
           setResult(null);
         }
         setIsLoading(false);
-      });
+      }
+    };
+
+    loadData();
 
     return () => {
       active = false;
+      clearTimeout(timeoutId);
     };
   }, [resultId]);
 

@@ -353,39 +353,62 @@ export default function ResultsPage() {
     useState<SessionClinicalAssessment | null>(null);
 
   useEffect(() => {
-    fetchResultFromCloud(resultId)
-      .then((cloudData) => {
+    let active = true;
+    let timeoutId: NodeJS.Timeout;
+    let attempts = 0;
+    const maxAttempts = 15;
+
+    const loadData = async () => {
+      try {
+        const cloudData = await fetchResultFromCloud(resultId);
         if (cloudData) {
+          if (!active) return;
           setResult(normalizeResult(JSON.stringify(cloudData)));
           setIsLoading(false);
-          // Transparently cache to IndexedDB for local offline use
           import("@/lib/session/videoStore").then(({ saveResult }) => {
             saveResult(resultId, cloudData).catch(() => {});
           });
-        } else {
-          // Fallback to old storage
-          const raw = readResultRaw(resultId);
-          if (raw) {
-            setResult(normalizeResult(raw));
-            setIsLoading(false);
-          } else {
-            getResult(resultId).then((stored) => {
-              if (stored) {
-                setResult(normalizeResult(JSON.stringify(stored)));
-                writeResult(resultId, stored);
-              }
-              setIsLoading(false);
-            }).catch(() => { setIsLoading(false); });
-          }
+          return;
         }
-      })
-      .catch((e) => {
+
+        const raw = readResultRaw(resultId);
+        if (raw) {
+          if (!active) return;
+          setResult(normalizeResult(raw));
+          setIsLoading(false);
+          return;
+        }
+
+        const stored = await getResult(resultId);
+        if (stored) {
+          if (!active) return;
+          setResult(normalizeResult(JSON.stringify(stored)));
+          writeResult(resultId, stored);
+          setIsLoading(false);
+          return;
+        }
+
+        if (attempts < maxAttempts) {
+          attempts++;
+          timeoutId = setTimeout(loadData, 1500);
+        } else {
+          if (active) setIsLoading(false);
+        }
+      } catch (e) {
         console.error("Failed to fetch from cloud:", e);
-        // Fallback on error
+        if (!active) return;
         const raw = readResultRaw(resultId);
         if (raw) setResult(normalizeResult(raw));
         setIsLoading(false);
-      });
+      }
+    };
+
+    loadData();
+
+    return () => {
+      active = false;
+      clearTimeout(timeoutId);
+    };
   }, [resultId]);
 
   useEffect(() => {
