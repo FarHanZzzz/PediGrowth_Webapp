@@ -152,6 +152,7 @@ export default function ClinicianResultPage() {
     isBestEffort,
     isValidationFailure,
     isCannotAssessRealRun,
+    isLoading,
   } = useResultViewModel(resultId);
 
   useEffect(() => {
@@ -219,10 +220,22 @@ export default function ClinicianResultPage() {
     return () => window.clearTimeout(timer);
   }, [shareLinkStatus]);
 
+  if (isLoading) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center px-4 bg-slate-50/50">
+        <div className="space-y-4 text-center">
+          <RefreshCw className="h-10 w-10 text-muted-foreground/50 mx-auto animate-spin" />
+          <p className="text-sm text-muted-foreground font-medium">Loading clinical assessment...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!result) {
     return (
       <div className="flex min-h-dvh items-center justify-center px-4">
         <div className="space-y-4 text-center">
+          <AlertTriangle className="h-10 w-10 text-muted-foreground mx-auto" />
           <p className="text-sm text-muted-foreground">Result not found. It may have expired.</p>
           <Button onClick={() => router.push("/start")} variant="outline">
             Start Over

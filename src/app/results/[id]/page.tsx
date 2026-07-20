@@ -343,6 +343,7 @@ export default function ResultsPage() {
   const resultId = params.id as string;
 
   const [result, setResult] = useState<AnalysisSessionResult | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<ResultTab>("summary");
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [exportAvailable, setExportAvailable] = useState(false);
@@ -356,6 +357,7 @@ export default function ResultsPage() {
       .then((cloudData) => {
         if (cloudData) {
           setResult(normalizeResult(JSON.stringify(cloudData)));
+          setIsLoading(false);
           // Transparently cache to IndexedDB for local offline use
           import("@/lib/session/videoStore").then(({ saveResult }) => {
             saveResult(resultId, cloudData).catch(() => {});
@@ -365,13 +367,15 @@ export default function ResultsPage() {
           const raw = readResultRaw(resultId);
           if (raw) {
             setResult(normalizeResult(raw));
+            setIsLoading(false);
           } else {
             getResult(resultId).then((stored) => {
               if (stored) {
                 setResult(normalizeResult(JSON.stringify(stored)));
                 writeResult(resultId, stored);
               }
-            }).catch(() => {});
+              setIsLoading(false);
+            }).catch(() => { setIsLoading(false); });
           }
         }
       })
@@ -380,6 +384,7 @@ export default function ResultsPage() {
         // Fallback on error
         const raw = readResultRaw(resultId);
         if (raw) setResult(normalizeResult(raw));
+        setIsLoading(false);
       });
   }, [resultId]);
 
@@ -651,6 +656,19 @@ export default function ResultsPage() {
       toggle?.focus();
     }
   }, [isAssistantOpen]);
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center px-4 bg-slate-50/50">
+        <div className="text-center space-y-4">
+          <Activity className="h-10 w-10 text-muted-foreground/50 mx-auto animate-spin" />
+          <p className="text-sm text-muted-foreground font-medium">
+            Loading assessment report...
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (!result) {
     return (

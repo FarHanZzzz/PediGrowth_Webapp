@@ -59,12 +59,14 @@ export interface ResultViewModel {
   isBestEffort: boolean;
   isValidationFailure: boolean;
   isCannotAssessRealRun: boolean;
+  isLoading: boolean;
 }
 
 export function useResultViewModel(resultId: string): ResultViewModel {
   const [result, setResult] = useState<AnalysisSessionResult | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [exportAvailable, setExportAvailable] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
@@ -74,6 +76,7 @@ export function useResultViewModel(resultId: string): ResultViewModel {
         if (!active) return;
         if (cloudData) {
           setResult(normalizeResult(JSON.stringify(cloudData)));
+          setIsLoading(false);
           
           // Transparent cache to local indexedDB
           try {
@@ -87,6 +90,7 @@ export function useResultViewModel(resultId: string): ResultViewModel {
         const raw = readResultRaw(resultId);
         if (raw) {
           setResult(normalizeResult(raw));
+          setIsLoading(false);
           return;
         }
 
@@ -95,13 +99,17 @@ export function useResultViewModel(resultId: string): ResultViewModel {
             if (!active) return;
             if (!stored) {
               setResult(null);
-              return;
+            } else {
+              writeResult(resultId, stored);
+              setResult(normalizeResult(JSON.stringify(stored)));
             }
-            writeResult(resultId, stored);
-            setResult(normalizeResult(JSON.stringify(stored)));
+            setIsLoading(false);
           })
           .catch(() => {
-            if (active) setResult(null);
+            if (active) {
+              setResult(null);
+              setIsLoading(false);
+            }
           });
       })
       .catch((err) => {
@@ -114,6 +122,7 @@ export function useResultViewModel(resultId: string): ResultViewModel {
         } else {
           setResult(null);
         }
+        setIsLoading(false);
       });
 
     return () => {
@@ -237,5 +246,6 @@ export function useResultViewModel(resultId: string): ResultViewModel {
     isBestEffort,
     isValidationFailure,
     isCannotAssessRealRun,
+    isLoading,
   };
 }
