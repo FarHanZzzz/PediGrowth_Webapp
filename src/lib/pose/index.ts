@@ -34,6 +34,7 @@ export async function extractLandmarkSequence(
   provider: PoseProvider,
   video: HTMLVideoElement,
   targetFps: number = 10,
+  onProgress?: (fraction: number) => void,
 ): Promise<LandmarkFrame[]> {
   const frames: LandmarkFrame[] = [];
   const duration = resolveExtractionDuration(video.duration);
@@ -48,6 +49,11 @@ export async function extractLandmarkSequence(
 
     const frame = await provider.extractFrame(video, time * 1000);
     frames.push(frame);
+
+    // Report sub-stage progress so the UI doesn't appear stuck
+    if (onProgress) {
+      onProgress((sampleIdx + 1) / sampleCount);
+    }
   }
 
   return frames;

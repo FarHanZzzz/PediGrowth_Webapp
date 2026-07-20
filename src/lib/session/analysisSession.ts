@@ -356,7 +356,7 @@ export async function runAnalysisPipeline(
           video.oncanplay = () => resolve();
         });
 
-        let rawFrames = await extractLandmarkSequence(provider, video, sampleFps);
+        let rawFrames = await extractLandmarkSequence(provider, video, sampleFps, (frac) => report(3, frac));
 
         // Recovery pass for weak detections: retry with a denser/safer sampling profile
         // and keep whichever pass yields the better frame-level detection rate.
@@ -374,7 +374,7 @@ export async function runAnalysisPipeline(
               (provider as { resetTimestampSequence: () => void }).resetTimestampSequence();
             }
 
-            const retryFrames = await extractLandmarkSequence(provider, video, retryFps);
+            const retryFrames = await extractLandmarkSequence(provider, video, retryFps, (frac) => report(3, frac));
             const retryDetectedFrames = countDetectedFrames(retryFrames);
             const retryDetectionRate = retryFrames.length > 0 ? retryDetectedFrames / retryFrames.length : 0;
 
