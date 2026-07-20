@@ -351,7 +351,7 @@ function ConcernPageContent() {
         {/* ────────────────────────────────────────────────────────── */}
         {/* NEW: Age-Normed Motor Milestone Assessment                */}
         {/* ────────────────────────────────────────────────────────── */}
-        {milestoneBands.length > 0 && (
+        {false && milestoneBands.length > 0 && (
           <Card className="mb-4">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
@@ -441,7 +441,7 @@ function ConcernPageContent() {
         {/* ────────────────────────────────────────────────────────── */}
         {/* NEW: AIMS Observational Checks (for infants ≤18 months)   */}
         {/* ────────────────────────────────────────────────────────── */}
-        {showAIMS && (
+        {false && showAIMS && (
           <Card className="mb-4">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
@@ -509,7 +509,7 @@ function ConcernPageContent() {
         {/* ────────────────────────────────────────────────────────── */}
         {/* Motor Delay Assessment Summary (REVAMPED — grouped UI)    */}
         {/* ────────────────────────────────────────────────────────── */}
-        {motorAssessment && (
+        {false && motorAssessment && (
           <Card className="mb-4 overflow-hidden">
             {/* ── Severity Header Strip ──────────────────────────── */}
             <div

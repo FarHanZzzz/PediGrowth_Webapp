@@ -1072,7 +1072,7 @@ export default function ResultsPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-sm text-foreground/90">
-                {sessionClinicalAssessment?.motorDelayAssessment ? (
+                {false && sessionClinicalAssessment?.motorDelayAssessment ? (
                   <>
                     <p>
                       <strong>Status:</strong>{" "}

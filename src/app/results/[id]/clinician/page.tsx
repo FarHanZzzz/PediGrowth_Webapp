@@ -764,7 +764,7 @@ export default function ClinicianResultPage() {
             <div className="md:col-span-5 space-y-4">
               <h3 className="text-sm font-semibold tracking-tight text-foreground/90 pb-1">Clinical Scales</h3>
               
-              {hasMotorContextData && (
+              {false && hasMotorContextData && (
                 <Card className="print-section border-amber-300 bg-amber-50/60 shadow-sm">
                   <CardContent className="p-3">
                     <p className="text-xs text-amber-900/90 font-medium">
@@ -822,7 +822,7 @@ export default function ClinicianResultPage() {
               })()}
 
               {/* Motor Delay Assessment */}
-              {clinicalAssessmentData?.motorDelayAssessment && (
+              {false && clinicalAssessmentData?.motorDelayAssessment && (
                 <MotorDelayAssessmentSummary
                   assessment={clinicalAssessmentData.motorDelayAssessment}
                   ageMonths={result.session.ageMonths ?? 0}
