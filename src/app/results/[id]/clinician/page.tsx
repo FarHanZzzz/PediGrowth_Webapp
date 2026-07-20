@@ -779,7 +779,7 @@ export default function ClinicianResultPage() {
                     </p>
                     {supplementalMotorTimestamp && (
                       <p className="mt-1.5 text-[10px] text-amber-900/60 uppercase tracking-wide">
-                        Captured: {new Date(supplementalMotorTimestamp).toLocaleString()}
+                        Captured: {supplementalMotorTimestamp ? new Date(supplementalMotorTimestamp!).toLocaleString() : ""}
                       </p>
                     )}
                   </CardContent>
@@ -824,9 +824,9 @@ export default function ClinicianResultPage() {
               {/* Motor Delay Assessment */}
               {false && clinicalAssessmentData?.motorDelayAssessment && (
                 <MotorDelayAssessmentSummary
-                  assessment={clinicalAssessmentData.motorDelayAssessment}
-                  ageMonths={result.session.ageMonths ?? 0}
-                  childName={result.session.nickname ?? "Child"}
+                  assessment={clinicalAssessmentData!.motorDelayAssessment!}
+                  ageMonths={result?.session?.ageMonths ?? 0}
+                  childName={result?.session?.nickname ?? "Child"}
                 />
               )}
             </div>

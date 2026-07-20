@@ -1076,18 +1076,18 @@ export default function ResultsPage() {
                   <>
                     <p>
                       <strong>Status:</strong>{" "}
-                      {sessionClinicalAssessment.motorDelayAssessment.delayFlag === "concern"
+                      {sessionClinicalAssessment?.motorDelayAssessment?.delayFlag === "concern"
                         ? "Evaluation recommended"
-                        : sessionClinicalAssessment.motorDelayAssessment.delayFlag === "watch"
+                        : sessionClinicalAssessment?.motorDelayAssessment?.delayFlag === "watch"
                           ? "Monitor closely"
                           : "On track"}
                     </p>
-                    <p>{sessionClinicalAssessment.motorDelayAssessment.summaryNote ?? "Motor milestone summary was captured for this session."}</p>
-                    {typeof sessionClinicalAssessment.motorDelayAssessment.expectedFromPriorCount === "number" &&
-                      typeof sessionClinicalAssessment.motorDelayAssessment.achievedFromPriorCount === "number" && (
+                    <p>{sessionClinicalAssessment?.motorDelayAssessment?.summaryNote ?? "Motor milestone summary was captured for this session."}</p>
+                    {typeof sessionClinicalAssessment?.motorDelayAssessment?.expectedFromPriorCount === "number" &&
+                      typeof sessionClinicalAssessment?.motorDelayAssessment?.achievedFromPriorCount === "number" && (
                         <p className="text-xs text-muted-foreground">
-                          Milestones achieved from prior stages: {sessionClinicalAssessment.motorDelayAssessment.achievedFromPriorCount} /
-                          {" "}{sessionClinicalAssessment.motorDelayAssessment.expectedFromPriorCount}
+                          Milestones achieved from prior stages: {sessionClinicalAssessment?.motorDelayAssessment?.achievedFromPriorCount} /
+                          {" "}{sessionClinicalAssessment?.motorDelayAssessment?.expectedFromPriorCount}
                         </p>
                       )}
                     {supplementalMotorMetadata && (

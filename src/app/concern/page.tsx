@@ -514,19 +514,19 @@ function ConcernPageContent() {
             {/* ── Severity Header Strip ──────────────────────────── */}
             <div
               className={`px-5 py-4 ${
-                motorAssessment.delayFlag === "concern"
+                motorAssessment?.delayFlag === "concern"
                   ? "bg-linear-to-r from-red-500 to-red-600 text-white"
-                  : motorAssessment.delayFlag === "watch"
+                  : motorAssessment?.delayFlag === "watch"
                     ? "bg-linear-to-r from-amber-400 to-amber-500 text-amber-950"
                     : "bg-linear-to-r from-emerald-400 to-emerald-500 text-emerald-950"
               }`}
             >
               <div className="flex items-center gap-3">
-                {motorAssessment.delayFlag === "concern" ? (
+                {motorAssessment?.delayFlag === "concern" ? (
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-card/20 backdrop-blur-sm">
                     <AlertTriangle className="h-5 w-5" />
                   </div>
-                ) : motorAssessment.delayFlag === "watch" ? (
+                ) : motorAssessment?.delayFlag === "watch" ? (
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-card/20 backdrop-blur-sm">
                     <AlertTriangle className="h-5 w-5" />
                   </div>
@@ -540,9 +540,9 @@ function ConcernPageContent() {
                     Motor Milestone Screening Result
                   </h3>
                   <p className="text-xs opacity-90 mt-0.5">
-                    {motorAssessment.delayFlag === "concern"
+                    {motorAssessment?.delayFlag === "concern"
                       ? "Evaluation Recommended"
-                      : motorAssessment.delayFlag === "watch"
+                      : motorAssessment?.delayFlag === "watch"
                         ? "Monitor Closely"
                         : "On Track"}
                   </p>
@@ -552,47 +552,47 @@ function ConcernPageContent() {
 
             <CardContent className="p-5 space-y-4">
               {/* ── Progress Summary Bar ─────────────────────────── */}
-              {motorAssessment.expectedFromPriorCount > 0 && (
+              {((motorAssessment?.expectedFromPriorCount) ?? 0) > 0 && (
                 <div className="rounded-xl bg-surface-container-low p-4">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-semibold text-foreground">
                       Prior-stage milestones achieved
                     </span>
                     <span className="text-xs font-bold text-foreground tabular-nums">
-                      {motorAssessment.achievedFromPriorCount} / {motorAssessment.expectedFromPriorCount}
+                      {motorAssessment?.achievedFromPriorCount} / {motorAssessment?.expectedFromPriorCount}
                     </span>
                   </div>
                   <div className="h-2.5 w-full rounded-full bg-muted/50 overflow-hidden">
                     <div
                       className={`h-full rounded-full transition-all duration-500 ${
-                        motorAssessment.delayFlag === "concern"
+                        motorAssessment?.delayFlag === "concern"
                           ? "bg-red-400"
-                          : motorAssessment.delayFlag === "watch"
+                          : motorAssessment?.delayFlag === "watch"
                             ? "bg-amber-400"
                             : "bg-emerald-400"
                       }`}
                       style={{
                         width: `${Math.round(
-                          (motorAssessment.achievedFromPriorCount /
-                            motorAssessment.expectedFromPriorCount) *
+                          ((motorAssessment?.achievedFromPriorCount ?? 0) /
+                            (motorAssessment?.expectedFromPriorCount ?? 1)) *
                             100
                         )}%`,
                       }}
                     />
                   </div>
                   <p className="text-[11px] text-muted-foreground mt-2">
-                    {motorAssessment.summaryNote}
+                    {motorAssessment?.summaryNote}
                   </p>
                 </div>
               )}
 
               {/* ── Delayed Milestones Grouped by Age Band ────────── */}
-              {motorAssessment.delayedByBand.length > 0 && (
+              {((motorAssessment?.delayedByBand?.length) ?? 0) > 0 && (
                 <div className="space-y-3">
                   <p className="text-xs font-semibold text-foreground uppercase tracking-wide">
                     Milestones not achieved — by age stage
                   </p>
-                  {motorAssessment.delayedByBand.map((band) => (
+                  {motorAssessment?.delayedByBand?.map((band) => (
                     <div
                       key={band.bandLabel}
                       className="rounded-xl border border-red-200/60 overflow-hidden"
@@ -649,7 +649,7 @@ function ConcernPageContent() {
               )}
 
               {/* ── No Delays — Positive Message ─────────────────── */}
-              {motorAssessment.delayedByBand.length === 0 && (
+              {((motorAssessment?.delayedByBand?.length) ?? 0) === 0 && (
                 <div className="rounded-xl bg-emerald-50/50 border border-emerald-200/60 p-4 text-center">
                   <CheckCircle2 className="h-6 w-6 text-emerald-500 mx-auto mb-2" />
                   <p className="text-xs font-medium text-emerald-700">
